@@ -1,4 +1,4 @@
-# Introduction to Programming II Final Project Template
+# Introduction to Programming II Final Project
 > Class Hwann-Tzong Chen
 
 [![build-windows](https://github.com/lightbulb12294/CSI2P2-Final-Project-Template/actions/workflows/build-windows.yml/badge.svg)](https://github.com/lightbulb12294/CSI2P2-Final-Project-Template/actions/workflows/build-windows.yml)
