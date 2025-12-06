@@ -18,8 +18,10 @@
 // fixed settings
 constexpr char game_icon_img_path[] = "./assets/image/game_icon.png";
 constexpr char game_start_sound_path[] = "./assets/sound/growl.wav";
-constexpr char background_img_path[] = "./assets/image/StartBackground.jpg";
+constexpr char background_img_path[] = "./assets/image/menu.jpg";
 constexpr char background_sound_path[] = "./assets/sound/BackgroundMusic.ogg";
+constexpr char win_img_path[] = "./assets/image/win.png";
+constexpr char lose_img_path[] = "./assets/image/lose.png";
 
 /**
  * @brief Game entry.
@@ -145,6 +147,9 @@ Game::game_init() {
 	debug_log("Game state: change to START\n");
 	state = STATE::START;
 	al_start_timer(timer);
+
+	win = IC->get(win_img_path);
+	lose = IC->get(lose_img_path);
 }
 
 /**
@@ -153,6 +158,15 @@ Game::game_init() {
  * @return Whether the game should keep running (true) or reaches the termination criteria (false).
  * @see Game::STATE
  */
+
+bool inside_button(float mx, float my, float cy) {
+    float cx = DataCenter::get_instance()->window_width / 2;
+    float w = 300, h = 70;
+
+    return (mx >= cx - w/2 && mx <= cx + w/2 &&
+            my >= cy - h/2 && my <= cy + h/2);
+}
+
 bool
 Game::game_update() {
 	DataCenter *DC = DataCenter::get_instance();
@@ -170,9 +184,21 @@ Game::game_update() {
 				is_played = true;
 			}
 
-			if(!SC->is_playing(instance)) {
-				debug_log("<Game> state: change to LEVEL\n");
-				state = STATE::LEVEL;
+			float mx = DC->mouse.x;
+			float my = DC->mouse.y;
+
+			if (DC->mouse_state[1]) { // left click
+				if (inside_button(mx, my, 270)) {
+					// ENTER → 進入 LEVEL
+					state = STATE::LEVEL;
+				}
+				if (inside_button(mx, my, 360)) {
+					// SETTING
+					// TODO: change to SETTING state
+				}
+				if (inside_button(mx, my, 450)) {
+					return false; // EXIT
+				}
 			}
 			break;
 		} case STATE::LEVEL: {
@@ -189,11 +215,11 @@ Game::game_update() {
 			}
 			if(DC->level->remain_monsters() == 0 && DC->monsters.size() == 0) {
 				debug_log("<Game> state: change to END\n");
-				state = STATE::END;
+				state = STATE::WIN;
 			}
 			if(DC->player->HP == 0) {
 				debug_log("<Game> state: change to END\n");
-				state = STATE::END;
+				state = STATE::LOSE;
 			}
 			break;
 		} case STATE::PAUSE: {
@@ -203,8 +229,36 @@ Game::game_update() {
 				state = STATE::LEVEL;
 			}
 			break;
-		} case STATE::END: {
-			return false;
+		} case STATE::LOSE: {
+			float mx = DC->mouse.x;
+			float my = DC->mouse.y;
+
+			if (DC->mouse_state[1]) { // left click
+				if (inside_button(mx, my, 300)) {
+					state = STATE::LEVEL;
+				}
+				if (inside_button(mx, my, 385)) {
+					state = STATE::START;
+				}
+				if (inside_button(mx, my, 470)) {
+					return false;
+				}
+			}
+			break;
+		}
+		case STATE::WIN: {
+			float mx = DC->mouse.x;
+			float my = DC->mouse.y;
+
+			if (DC->mouse_state[1]) { // left click
+				if (inside_button(mx, my, 370)) {
+					state = STATE::START;
+				}
+				if (inside_button(mx, my, 450)) {
+					return false;
+				}
+			}
+			break;
 		}
 	}
 	// If the game is not paused, we should progress update.
@@ -212,7 +266,7 @@ Game::game_update() {
 		DC->player->update();
 		SC->update();
 		ui->update();
-		if(state != STATE::START) {
+		if(state == STATE::LEVEL) {
 			DC->level->update();
 			OC->update();
 		}
@@ -226,6 +280,33 @@ Game::game_update() {
 /**
  * @brief Draw the whole game and objects.
  */
+
+void draw_button(const char *text, float cx, float cy){
+    const float w = 280;
+    const float h = 70;
+
+    // button rectangle
+    al_draw_filled_rectangle(
+        cx - w/2, cy - h/2,
+        cx + w/2, cy + h/2,
+        al_map_rgba(50, 100, 200, 220)
+    );
+    al_draw_rectangle(
+        cx - w/2, cy - h/2,
+        cx + w/2, cy + h/2,
+        al_map_rgb(200, 200, 255), 3
+    );
+
+    // text
+    FontCenter *FC = FontCenter::get_instance();
+    al_draw_text(
+        FC->caviar_dreams[FontSize::LARGE],
+        al_map_rgb(255, 255, 255),
+        cx, cy - 20,
+        ALLEGRO_ALIGN_CENTRE, text
+    );
+}
+
 void
 Game::game_draw() {
 	DataCenter *DC = DataCenter::get_instance();
@@ -234,21 +315,11 @@ Game::game_draw() {
 
 	// Flush the screen first.
 	al_clear_to_color(al_map_rgb(100, 100, 100));
-	if(state != STATE::END) {
+	if(state != STATE::LOSE || state != STATE::WIN) {
 		// background
 		al_draw_bitmap(background, 0, 0, 0);
-		if(DC->game_field_length < DC->window_width)
-			al_draw_filled_rectangle(
-				DC->game_field_length, 0,
-				DC->window_width, DC->window_height,
-				al_map_rgb(100, 100, 100));
-		if(DC->game_field_length < DC->window_height)
-			al_draw_filled_rectangle(
-				0, DC->game_field_length,
-				DC->window_width, DC->window_height,
-				al_map_rgb(100, 100, 100));
 		// user interface
-		if(state != STATE::START) {
+		if(state == STATE::LEVEL) {
 			DC->level->draw();
 			ui->draw();
 			OC->draw();
@@ -256,6 +327,19 @@ Game::game_draw() {
 	}
 	switch(state) {
 		case STATE::START: {
+			al_draw_text(
+				FC->caviar_dreams[FontSize::XXL], 
+				al_map_rgb(255, 255, 150),
+				DC->window_width / 2, 
+				70,
+				ALLEGRO_ALIGN_CENTRE,
+				"Furious Slime Rampage"
+    		);
+			draw_button("ENTER", DC->window_width/2, 270);
+			draw_button("SETTING", DC->window_width/2, 360);
+			draw_button("EXIT", DC->window_width/2, 450);
+
+			break;
 		} case STATE::LEVEL: {
 			break;
 		} case STATE::PAUSE: {
@@ -266,7 +350,19 @@ Game::game_draw() {
 				DC->window_width/2., DC->window_height/2.,
 				ALLEGRO_ALIGN_CENTRE, "GAME PAUSED");
 			break;
-		} case STATE::END: {
+		} case STATE::LOSE: {
+			al_draw_bitmap(lose, 230, 20, 0);
+
+			draw_button("START OVER", DC->window_width/2, 300);
+			draw_button("BACK TO MENU", DC->window_width/2, 385);
+			draw_button("EXIT", DC->window_width/2, 470);
+			break;
+		} case STATE::WIN: {
+			al_draw_bitmap(win, 300, 20, 0);
+
+			draw_button("BACK TO MENU", DC->window_width/2, 370);
+			draw_button("EXIT", DC->window_width/2, 450);
+			break;
 		}
 	}
 	al_flip_display();
