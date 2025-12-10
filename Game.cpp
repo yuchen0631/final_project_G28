@@ -289,6 +289,15 @@ bool Game::game_update() {
         DC->player->update();
         OC->update();
 
+        DataCenter* DC = DataCenter::get_instance();
+
+        // ★ 達成目標（只觸發一次）
+        if (!DC->stage_cleared &&
+            DC->slime_kill_count >= DC->slime_kill_target)
+        {
+            DC->stage_cleared = true;
+            state = STATE::WIN_HINT;   // 自訂新狀態
+        }
 
         // ─────────────────────────────────────────────
         // 死亡判定
@@ -297,6 +306,8 @@ bool Game::game_update() {
             state = STATE::LOSE;
 
         break;
+
+    
     }
 
 
@@ -339,7 +350,17 @@ bool Game::game_update() {
         }
         break;
     }
+    case STATE::WIN_HINT: {
+        if (DC->key_state[ALLEGRO_KEY_ENTER] &&
+            !DC->prev_key_state[ALLEGRO_KEY_ENTER])
+        {
+            state = STATE::LEVEL;    // 或你想跳下一章節
+        }
+        break;
     }
+    
+}
+
 
     // update prev key/mouse
     memcpy(DC->prev_key_state, DC->key_state, sizeof(DC->key_state));
@@ -402,7 +423,61 @@ void Game::game_draw() {
         draw_button("EXIT", DC->window_width/2, 450);
         break;
     }
+
+    case STATE::WIN_HINT: {
+
+        // 半透明黑背景
+        al_draw_filled_rectangle(
+            0, 0,
+            DC->window_width,
+            DC->window_height,
+            al_map_rgba(0, 0, 0, 180)
+        );
+
+        ALLEGRO_FONT* font = al_create_builtin_font();
+
+        // 白底彈窗
+        al_draw_filled_rectangle(
+            DC->window_width/2 - 200,
+            DC->window_height/2 - 100,
+            DC->window_width/2 + 200,
+            DC->window_height/2 + 100,
+            al_map_rgb(255,255,255)
+        );
+
+        al_draw_rectangle(
+            DC->window_width/2 - 200,
+            DC->window_height/2 - 100,
+            DC->window_width/2 + 200,
+            DC->window_height/2 + 100,
+            al_map_rgb(0,0,0),
+            2
+        );
+
+        al_draw_text(font,
+            al_map_rgb(0,0,0),
+            DC->window_width/2,
+            DC->window_height/2 - 40,
+            ALLEGRO_ALIGN_CENTRE,
+            "CONGRATULATIONS!");
+
+        al_draw_text(font,
+            al_map_rgb(0,0,0),
+            DC->window_width/2,
+            DC->window_height/2 + 10,
+            ALLEGRO_ALIGN_CENTRE,
+            "you got the hint");
+
+        al_draw_text(font,
+            al_map_rgb(0,0,0),
+            DC->window_width/2,
+            DC->window_height/2 + 50,
+            ALLEGRO_ALIGN_CENTRE,
+            "(press ENTER to continue)");
+        break;
     }
+}
+
 
     al_flip_display();
 }

@@ -14,12 +14,11 @@ public:
     Rectangle* shape;
     int HP = 3;
 
-    double speed = 70;                 
+    double speed = 40;                 
     double attack_range = 2.0;         
     double attack_cooldown = 0.5; // attack cooldown in seconds
-    double last_attack_time = 0; 
-    
-    // 隨機移動資訊
+    double last_attack_time = 0;
+
     double dir_x = 0;
     double dir_y = 0;
     double last_change_dir = 0;

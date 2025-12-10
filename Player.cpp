@@ -86,6 +86,16 @@ void Player::attack(Monster* target) {
     if (!target) return;
     debug_log("<Player> Attack!\n");
     target->HP -= 1;
+
+    if (target->HP <= 0) {
+
+        DataCenter* DC = DataCenter::get_instance();
+        DC->slime_kill_count++;
+
+        debug_log("Slime kill = %d / %d\n",
+                  DC->slime_kill_count,
+                  DC->slime_kill_target);
+    }
 }
 
 void Player::draw() {

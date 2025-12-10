@@ -10,7 +10,10 @@ static inline int strip_gid(int gid) {
     return gid & 0x1FFFFFFF;   // 去掉翻轉 bits
 }
 
-Level::Level() {}
+Level::Level() {
+    camera_zoom = 1.0;
+
+}
 
 void Level::init() {
     layers.clear();
@@ -180,14 +183,16 @@ void Level::update(int px_tile, int py_tile) {
 }
 
 void Level::update_camera(int tx, int ty) {
-    cam_x = tx * TILE_SIZE - 960 / 2;
-    cam_y = ty * TILE_SIZE - 540 / 2;
+    double zoom = camera_zoom; 
+
+    cam_x = tx * TILE_SIZE - (960 / (2 * zoom));
+    cam_y = ty * TILE_SIZE - (540 / (2 * zoom));
 
     if (cam_x < 0) cam_x = 0;
     if (cam_y < 0) cam_y = 0;
 
-    if (cam_x > pixel_w - 960) cam_x = pixel_w - 960;
-    if (cam_y > pixel_h - 540) cam_y = pixel_h - 540;
+    if (cam_x > pixel_w - 960 / zoom) cam_x = pixel_w - 960 / zoom;
+    if (cam_y > pixel_h - 540 / zoom) cam_y = pixel_h - 540 / zoom;
 }
 
 //

@@ -20,7 +20,8 @@ private:
         LEVEL,
         PAUSE,
         LOSE,
-        WIN
+        WIN,
+        WIN_HINT
     };
 
     STATE state;

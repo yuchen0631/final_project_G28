@@ -29,6 +29,14 @@ UI::update() {
 void
 UI::draw() {
 	DataCenter *DC = DataCenter::get_instance();
+	ALLEGRO_FONT* font = al_create_builtin_font();
+	// 左上角擊殺計數
+    al_draw_textf(font,
+                  al_map_rgb(255, 255, 255),
+                  10, 10, 0,
+                  "Slime kill: %d / %d",
+                  DC->slime_kill_count,
+                  DC->slime_kill_target);
 	// draw HP
 	const int &game_field_length = DC->game_field_length;
 	const int &player_HP = DC->player->HP;

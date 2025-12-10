@@ -6,13 +6,13 @@
 #include <allegro5/allegro.h>
 #include "algif5/json.hpp"
 using json = nlohmann::json;
-
 #define TILE_SIZE 32
 
 class Level {
 public:
     Level();
 
+    double camera_zoom;
     bool load_map(const char* path);
     void update(int px_tile, int py_tile);
     void draw();

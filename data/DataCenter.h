@@ -86,6 +86,11 @@ public:
 	 * @see Bullet
 	 */
 	std::vector<Bullet*> towerBullets;
+public:
+	int slime_kill_count = 0;
+	int slime_kill_target = 5;
+	bool stage_cleared = false;
+
 private:
 	DataCenter();
 };
