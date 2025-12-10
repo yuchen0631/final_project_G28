@@ -2,100 +2,119 @@
 #include "data/DataCenter.h"
 #include "data/ImageCenter.h"
 #include "Utils.h"
+#include "Level.h"
 #include <allegro5/allegro_primitives.h>
 #include <cmath>
 
 Player::Player(){
-    shape = new Rectangle{300, 300, 320, 320}; // initialize player position
-    HP = 10; 
+    shape = new Rectangle{32*1, 32*1, 32*1+32, 32*1+32};
+    HP = 10;
+
     attack_cooldown = 0;
-    attack_interval = 0.3; // attack every 0.3 seconds
-    v = 150; // movement speed (pixels per second)
+    attack_interval = 0.3; 
+    v = 150;
 }
 
-void Player::update(){
+void Player::update() {
+
     DataCenter *DC = DataCenter::get_instance();
-    double movement = v / DC->FPS; // movement per frame
+    Level* LV = DC->level;
 
-    // movement control
-    if(DC->key_state[ALLEGRO_KEY_W]) shape->update_center_y(shape->center_y() - movement);
-    if(DC->key_state[ALLEGRO_KEY_S]) shape->update_center_y(shape->center_y() + movement);
-    if(DC->key_state[ALLEGRO_KEY_A]) shape->update_center_x(shape->center_x() - movement);
-    if(DC->key_state[ALLEGRO_KEY_D]) shape->update_center_x(shape->center_x() + movement);
+    // ⭐ 每幀降低攻擊冷卻
+    if (attack_cooldown > 0)
+        attack_cooldown -= 1.0 / DC->FPS;
 
-    // update attack cooldown
-    if(attack_cooldown > 0) attack_cooldown -= 1.0 / DC->FPS;
+    double movement = v / DC->FPS;
 
-    int screen_w = DC->window_width;  
-    int screen_h = DC->window_height;
-    if (shape->x1 < 0) {
-        shape->update_center_x(shape->center_x() - shape->x1); // push slime back into screen
-        //dir_x = -dir_x; // invert X direction (bounce back)
-    }
+    double cx = shape->center_x();
+    double cy = shape->center_y();
 
-    else if (shape->x2 > screen_w) {
-        shape->update_center_x(shape->center_x() - (shape->x2 - screen_w));
-        //dir_x = -dir_x; 
-    }
+    double nx = cx;
+    double ny = cy;
 
-    if (shape->y1 < 0) {
-        shape->update_center_y(shape->center_y() - shape->y1); 
-        //dir_y = -dir_y; 
-    }
+    // movement
+    if (DC->key_state[ALLEGRO_KEY_W]) ny -= movement;
+    if (DC->key_state[ALLEGRO_KEY_S]) ny += movement;
+    if (DC->key_state[ALLEGRO_KEY_A]) nx -= movement;
+    if (DC->key_state[ALLEGRO_KEY_D]) nx += movement;
 
-    else if (shape->y2 > screen_h) {
-        shape->update_center_y(shape->center_y() - (shape->y2 - screen_h)); 
-        //dir_y = -dir_y; 
-    }
+    // collision X
+    if (!LV->is_blocked_pixel(nx, cy))
+        shape->update_center_x(nx);
 
+    // collision Y
+    if (!LV->is_blocked_pixel(cx, ny))
+        shape->update_center_y(ny);
+
+    // 移動 camera（用 Game 裡的 update 已經可以，這裡不會衝突）
+    LV->update(
+        shape->center_x() / TILE_SIZE,
+        shape->center_y() / TILE_SIZE
+    );
+
+    // ⭐ 攻擊判定
     detect_and_attack();
 }
 
-void Player::detect_and_attack(){
+void Player::detect_and_attack() {
     DataCenter *DC = DataCenter::get_instance();
 
-    if(!DC->key_state[ALLEGRO_KEY_SPACE]) return; 
+    // ⭐ 改為「按下這一瞬間」
+    if (!(DC->key_state[ALLEGRO_KEY_SPACE] && !DC->prev_key_state[ALLEGRO_KEY_SPACE]))
+        return;
 
-    if(attack_cooldown > 0) return;
+    if (attack_cooldown > 0)
+        return;
 
-    Point player_center{
-        shape->center_x(),
-        shape->center_y()
-    };
+    Point p(shape->center_x(), shape->center_y());
 
-    for(Monster* m : DC->monsters){
-        if(!m) continue;
+    for (Monster* m : DC->monsters) {
+        if (!m) continue;
 
-        Point monster_center{
-            m->shape->center_x(),
-            m->shape->center_y()
-        };
+        Point mc(m->shape->center_x(), m->shape->center_y());
+        double dist = Point::dist(p, mc);
 
-        double dist = Point::dist(player_center, monster_center);
-
-        if(dist <= 30.0){
+        if (dist <= 30.0) {
             attack(m);
-            attack_cooldown = attack_interval; // reset CD
-            return; // attack only one monster per input
+            attack_cooldown = attack_interval;
+            return;
         }
     }
 }
 
 void Player::attack(Monster* target) {
-    if(!target) return;
-
+    if (!target) return;
     debug_log("<Player> Attack!\n");
-
     target->HP -= 1;
-
 }
 
 void Player::draw() {
+
+    DataCenter* DC = DataCenter::get_instance();
+    Level* LV = DC->level;
+
+    double sx = shape->center_x() - LV->get_cam_x();
+    double sy = shape->center_y() - LV->get_cam_y();
+
     al_draw_filled_rectangle(
-        shape->center_x() - 10,
-        shape->center_y() - 20,
-        shape->center_x() + 10,
-        shape->center_y(),
+        sx - 10,
+        sy - 20,
+        sx + 10,
+        sy,
         al_map_rgb(255, 255, 255)
     );
 }
+
+void Player::reset_position(double x, double y) {
+    if (!shape) return;
+
+    double w = shape->x2 - shape->x1;
+    double h = shape->y2 - shape->y1;
+
+    shape->x1 = x;
+    shape->y1 = y;
+    shape->x2 = x + w;
+    shape->y2 = y + h;
+}
+
+

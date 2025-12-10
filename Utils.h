@@ -1,6 +1,7 @@
 #ifndef GAME_ASSERT_H_INCLUDED
 #define GAME_ASSERT_H_INCLUDED
 
+
 #include <cstdio>
 #include <allegro5/system.h>
 
@@ -23,7 +24,7 @@
 #ifdef DEBUG
 	#define debug_log(...) printf(__VA_ARGS__)
 #else
-	#define debug_log(...) 
+	#define debug_log(...)
 #endif
 
 #endif

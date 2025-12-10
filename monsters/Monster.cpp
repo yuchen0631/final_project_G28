@@ -2,47 +2,44 @@
 #include "../data/DataCenter.h"
 #include "../data/ImageCenter.h"
 #include "../Player.h"
+#include "../Level.h"
 #include <cmath>
 #include <cstdlib>
 #include <allegro5/allegro_primitives.h>
 
-Monster::Monster(double x, double y, const char* img_root) {
+Monster::Monster(double cx, double cy, const char* img_root) {
     sprintf(img_path, "%s", img_root);
-    shape = new Rectangle(x, y, x + 20, y + 20);
 
-	// random initial direction
-    dir_x = (rand() % 3) - 1; // -1,0,1
-    dir_y = (rand() % 3) - 1;
-    if (dir_x == 0 && dir_y == 0) dir_x = 1;
-    last_change_dir = al_get_time();
+    double w = 32;
+    double h = 32;
+
+    shape = new Rectangle(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
 }
 
 Monster* Monster::create_monster(MonsterType type) {
-    // random spawn position
-    double x = rand() % 960;
-    double y = rand() % 540;
+    double x = rand() % 300;
+    double y = rand() % 300;
 
     const char* img = nullptr;
     switch(type) {
         case MonsterType::SLIME:
             img = "./assets/image/slime.png";
             break;
-        //handle other monster types here
     }
 
     return new Monster(x, y, img);
 }
 
 void Monster::update() {
-	DataCenter* DC = DataCenter::get_instance();
+    DataCenter* DC = DataCenter::get_instance();
     Player* player = DC->player;
+
     random_move();
     try_attack_player();
 
-    // update shape size based on image size
     ImageCenter* IC = ImageCenter::get_instance();
     ALLEGRO_BITMAP* bmp = IC->get(img_path);
-	if (!bmp) return;
+    if (!bmp) return;
 
     int w = al_get_bitmap_width(bmp);
     int h = al_get_bitmap_height(bmp);
@@ -50,20 +47,27 @@ void Monster::update() {
     double cx = shape->center_x();
     double cy = shape->center_y();
 
-    shape->x1 = cx - w * 0.4;
-    shape->y1 = cy - h * 0.4;
-    shape->x2 = cx + w * 0.4;
-    shape->y2 = cy + h * 0.4;
+    double half_w = w * 0.4;
+    double half_h = h * 0.4;
+
+    shape->x1 = cx - half_w;
+    shape->y1 = cy - half_h;
+    shape->x2 = cx + half_w;
+    shape->y2 = cy + half_h;
+
+    
 }
 
 void Monster::random_move() {
     DataCenter* DC = DataCenter::get_instance();
+    Level* LV = DC->level;
+
     double now = al_get_time();
 
     if (now - last_change_dir >= change_dir_interval) {
         last_change_dir = now;
 
-        dir_x = (rand() % 3) - 1; // -1,0,1
+        dir_x = (rand() % 3) - 1;
         dir_y = (rand() % 3) - 1;
 
         if (dir_x == 0 && dir_y == 0)
@@ -71,34 +75,42 @@ void Monster::random_move() {
     }
 
     double len = std::sqrt(dir_x*dir_x + dir_y*dir_y);
+    if (len == 0 || std::isnan(len)) {
+        dir_x = 1;
+        dir_y = 0;
+        len = 1;
+    }
+
     double vx = (dir_x / len) * speed / DC->FPS;
     double vy = (dir_y / len) * speed / DC->FPS;
 
     shape->update_center_x(shape->center_x() + vx);
     shape->update_center_y(shape->center_y() + vy);
 
-	int screen_w = DC->window_width;  
-    int screen_h = DC->window_height;
+    // ---------- WORLD boundary ----------
+    int world_w = LV->get_world_width();
+    int world_h = LV->get_world_height();
 
-    // implement screen boundary check
+    // left
     if (shape->x1 < 0) {
-        shape->update_center_x(shape->center_x() - shape->x1); // push slime back into screen
-        dir_x = -dir_x; // invert X direction (bounce back)
+        shape->update_center_x(shape->center_x() - shape->x1);
+        dir_x = -dir_x;
+    }
+    // right
+    else if (shape->x2 > world_w) {
+        shape->update_center_x(shape->center_x() - (shape->x2 - world_w));
+        dir_x = -dir_x;
     }
 
-    else if (shape->x2 > screen_w) {
-        shape->update_center_x(shape->center_x() - (shape->x2 - screen_w));
-        dir_x = -dir_x; 
-    }
-
+    // top
     if (shape->y1 < 0) {
-        shape->update_center_y(shape->center_y() - shape->y1); 
-        dir_y = -dir_y; 
+        shape->update_center_y(shape->center_y() - shape->y1);
+        dir_y = -dir_y;
     }
-
-    else if (shape->y2 > screen_h) {
-        shape->update_center_y(shape->center_y() - (shape->y2 - screen_h)); 
-        dir_y = -dir_y; 
+    // bottom
+    else if (shape->y2 > world_h) {
+        shape->update_center_y(shape->center_y() - (shape->y2 - world_h));
+        dir_y = -dir_y;
     }
 }
 
@@ -134,13 +146,29 @@ void Monster::attack_player() {
 }
 
 void Monster::draw() {
+    DataCenter* DC = DataCenter::get_instance();
+    Level* LV = DC->level;
+
+    //debug_log("[SLIME] world (%f,%f) screen (%f,%f)\n",
+        //shape->center_x(),
+        //shape->center_y(),
+        //shape->center_x() - LV->get_cam_x(),
+        //shape->center_y() - LV->get_cam_y()
+    //);
+
     ImageCenter* IC = ImageCenter::get_instance();
     ALLEGRO_BITMAP* bmp = IC->get(img_path);
+    if (!bmp) return;
+
+    // world-to-screen transform
+    double sx = shape->center_x() - LV->get_cam_x();
+    double sy = shape->center_y() - LV->get_cam_y();
 
     al_draw_bitmap(
         bmp,
-        shape->center_x() - al_get_bitmap_width(bmp) / 2,
-        shape->center_y() - al_get_bitmap_height(bmp) / 2,
+        sx - al_get_bitmap_width(bmp) / 2,
+        sy - al_get_bitmap_height(bmp) / 2,
         0
     );
 }
+

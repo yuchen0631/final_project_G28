@@ -1,4 +1,6 @@
 #define ALLEGRO_NO_MAGIC_MAIN
+#define ALLEGRO_MAIN
+#include <allegro5/allegro.h>
 #include "Game.h"
 #include <iostream>
 #include <string>

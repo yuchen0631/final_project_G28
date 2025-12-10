@@ -14,6 +14,9 @@ public:
     void detect_and_attack();
     void attack(Monster* target);
 
+    void reset_position(double x, double y);
+
+
     Rectangle* shape;
     int HP;
 
