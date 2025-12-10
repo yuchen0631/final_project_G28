@@ -7,92 +7,64 @@
 #include <allegro5/mouse.h>
 #include "../shapes/Point.h"
 
+#include "DialogManager.h"
+#include "../FragmentObject.h"   // ★★★ 這是最重要的 ★★★
+
+// forward declarations（可以保留 Player / Level / Monster）
 class Player;
 class Level;
 class Monster;
 class Bullet;
+class NPC;
 
-/**
- * @brief Stores generic global data and relatively small data structures.
- * @details The globally used data such as FPS (frames per second), windows size, game region, and states of input devices (mouse and keyboard).
- * Player and Level are stored here mainly because the objects are small enough that do not require complex management.
- * Other specific data like game objects (towers, monsters ... etc) or ALLEGRO_BITMAP will be managed by other center objects.
- */
+// ★ 刪掉 FragmentObject 的 forward declare！！！
+// class FragmentObject;  ← 必須刪掉
+
 class DataCenter
 {
 public:
-	static DataCenter *get_instance() {
-		static DataCenter DC;
-		return &DC;
-	}
-	~DataCenter();
+    static DataCenter *get_instance() {
+        static DataCenter DC;
+        return &DC;
+    }
+    ~DataCenter();
+
 public:
-	double FPS;
-	int window_width, window_height;
-	/**
-	 * @brief The width and height of game area (not window size). That is, the region excludes menu region.
-	 * @details The game area is sticked to the top-left of the display window.
-	 */
-	int game_field_length;
-	/**
-	 * @brief Stores the keyboard state whether a key is being pressed.
-	 * @details The states will be updated once a key is pressed, asynchronously with frame update.
-	 * @see Game::execute()
-	 */
-	bool key_state[ALLEGRO_KEY_MAX];
-	/**
-	 * @brief Stores the keyboard states of the previous frame.
-	 * @details The states will be updated every frame.
-	 * @see Game::game_update()
-	 */
-	bool prev_key_state[ALLEGRO_KEY_MAX];
-	/**
-	 * @brief Stores the mouse position relative to the game window.
-	 * @details The state will be update once the mouse is moved.
-	 * @see Game::execute()
-	 */
-	Point mouse;
-	/**
-	 * @brief Stores the state of every mouse button.
-	 * @details The state will be update once a mouse button is clicked.
-	 * @see Game::execute()
-	 */
-	bool mouse_state[ALLEGRO_MOUSE_MAX_EXTRA_AXES];
-	/**
-	 * @brief Stores the state of every mouse button of the previous frame.
-	 * @details The state will be update every frame.
-	 * @see Game::game_update()
-	 */
-	bool prev_mouse_state[ALLEGRO_MOUSE_MAX_EXTRA_AXES];
+    double FPS;
+    int window_width, window_height;
+    int game_field_length;
+
+    bool key_state[ALLEGRO_KEY_MAX];
+    bool prev_key_state[ALLEGRO_KEY_MAX];
+    Point mouse;
+    bool mouse_state[ALLEGRO_MOUSE_MAX_EXTRA_AXES];
+    bool prev_mouse_state[ALLEGRO_MOUSE_MAX_EXTRA_AXES];
+
 public:
-	/**
-	 * @brief Stores the basic information that a player should have.
-	 * @details For a tower-defense game, coin and health point is enough to represent a player.
-	 * @see Player
-	 */
-	Player *player;
-	/**
-	 * @brief Loads and stores the information of a level.
-	 * @see Level
-	 */
-	Level *level;
-	/**
-	 * @brief Raw list of Monster objects.
-	 * @see Monster
-	 */
-	std::vector<Monster*> monsters;
-	/**
-	 * @brief Raw list of Bullet objects.
-	 * @see Bullet
-	 */
-	std::vector<Bullet*> towerBullets;
-public:
-	int slime_kill_count = 0;
-	int slime_kill_target = 5;
-	bool stage_cleared = false;
+    Player *player;
+    Level *level;
+
+    std::vector<Monster*> monsters;
+    std::vector<Bullet*> towerBullets;
+
+    NPC* forest_npc = nullptr;
+    DialogManager* dialog = nullptr;
+
+    int slime_kill_count = 0;
+    int slime_kill_target = 5;
+
+    int fragment_collected = 0;
+    int fragment_total = 5;
+
+    // ★ 使用 FragmentObject，需要完整定義
+    std::vector<FragmentObject*> fragments;
+
+    bool stage_cleared = false;
 
 private:
-	DataCenter();
+    DataCenter();
 };
 
 #endif
+
+

@@ -7,6 +7,12 @@
 #include "data/FontCenter.h"
 #include "Player.h"
 #include "Level.h"
+#include "NPC.h"
+#include "FragmentObject.h"
+#include "data/DialogManager.h"
+
+
+
 
 #include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
@@ -14,6 +20,8 @@
 #include <allegro5/allegro_image.h>
 #include <allegro5/allegro_acodec.h>
 #include <cstring>
+std::string dialog_text = "";
+
 
 // fixed paths
 constexpr char game_icon_img_path[] = "./assets/image/game_icon.png";
@@ -54,6 +62,45 @@ void draw_button(const char *text, float cx, float cy) {
         ALLEGRO_ALIGN_CENTRE,
         text
     );
+}
+
+void Game::spawn_fragments()
+{
+    debug_log("SPAWN fragments!!\n");
+    DataCenter* DC = DataCenter::get_instance();
+
+    // 清空舊資料（保險）
+    for (auto* f : DC->fragments) delete f;
+    DC->fragments.clear();
+
+    const char* gem_path = "./assets/image/gem.png";
+
+    struct GemPos { int x, y; };
+    GemPos gempos[5] = {
+        {11, 20},
+        {13, 20},
+        {15, 20},
+        {17, 20},
+        {19, 20}
+    };
+
+    for (int i = 0; i < 5; i++) {
+        DC->fragments.push_back(
+            new FragmentObject(
+                gempos[i].x * TILE_SIZE,
+                gempos[i].y * TILE_SIZE,
+                gem_path
+            )
+        );
+    }
+
+    DC->fragment_total = 5;
+    DC->fragment_collected = 0;
+}
+
+void show_dialog(const char* msg)
+{
+    dialog_text = msg;
 }
 
 // ───────────────────────────────────────────────
@@ -119,15 +166,35 @@ Game::~Game() {
 // ───────────────────────────────────────────────
 void Game::game_init() {
 
+    debug_log("Game Init Start\n");
+
+    debug_log("display = %p\n", display);
+    debug_log("event_queue = %p\n", event_queue);
+    debug_log("timer = %p\n", timer);
+
+
     DataCenter *DC = DataCenter::get_instance();
-    debug_log("Game Init: Player = %p\n", DC->player);
+    debug_log("player = %p\n", DC->player);
+    debug_log("level = %p\n", DC->level);
+    debug_log("npc = %p\n", DC->forest_npc);
+    debug_log("fragments.size = %d\n", (int)DC->fragments.size());
+
     ImageCenter *IC = ImageCenter::get_instance();
     SoundCenter *SC = SoundCenter::get_instance();
     FontCenter *FC = FontCenter::get_instance();
 
+    // ---------------------------------------------------
+    // ★★★ 先初始化音效中心、字體中心（非常重要）
+    // ---------------------------------------------------
+    SC->init();
+    FC->init();
+
+    // ---------------------------------------------------
+    // ★★★ 現在才可以載圖片和 UI（避免使用未載入字體）
+    // ---------------------------------------------------
+
     // icon
     game_icon = IC->get(game_icon_img_path);
-    al_set_display_icon(display, game_icon);
 
     // events
     al_register_event_source(event_queue, al_get_display_event_source(display));
@@ -135,11 +202,7 @@ void Game::game_init() {
     al_register_event_source(event_queue, al_get_mouse_event_source());
     al_register_event_source(event_queue, al_get_timer_event_source(timer));
 
-    // init centers
-    SC->init();
-    FC->init();
-
-    // UI
+    // UI（此時 font 已載入，所以不會 crash）
     ui = new UI();
     ui->init();
 
@@ -151,6 +214,7 @@ void Game::game_init() {
     state = STATE::START;
     al_start_timer(timer);
 }
+
 
 // ───────────────────────────────────────────────
 // Main Loop
@@ -199,6 +263,9 @@ bool Game::game_update() {
     OperationCenter *OC = OperationCenter::get_instance();
     static ALLEGRO_SAMPLE_INSTANCE* bgm = nullptr;
 
+    bool interact = DC->key_state[ALLEGRO_KEY_E] &&
+                    !DC->prev_key_state[ALLEGRO_KEY_E];
+
     switch(state) {
 
     // ─────────── START MENU ───────────
@@ -214,40 +281,45 @@ bool Game::game_update() {
 
         if(DC->mouse_state[1]) {
             if(inside_button(mx, my, 270)) {
-                // load tile map ONCE
                 if(!map_loaded) {
                     DC->level->load_map("./assets/map/forest.tmj");
                     map_loaded = true;
-                }
-                al_flush_event_queue(event_queue);
-                al_rest(0.02);
-                    al_flush_event_queue(event_queue);
 
+                    // ★★★ NPC 一開始就生成 ★★★
+                    DC->forest_npc = new NPC(
+                        15 * TILE_SIZE,
+                        15 * TILE_SIZE,
+                        "./assets/image/npc.png"
+                    );
+                }
+
+                // 清除按鍵
+                al_flush_event_queue(event_queue);
                 memset(DC->key_state, 0, sizeof(DC->key_state));
                 memset(DC->prev_key_state, 0, sizeof(DC->prev_key_state));
-                memset(DC->mouse_state, 0, sizeof(DC->mouse_state));
-                memset(DC->prev_mouse_state, 0, sizeof(DC->prev_mouse_state));
 
                 state = STATE::LEVEL;
             }
-            if(inside_button(mx, my, 450)) return false;
+            if(inside_button(mx, my, 450))
+                return false;
         }
         break;
     }
 
+    // ─────────── LEVEL ───────────
     case STATE::LEVEL: {
 
         static bool spawned = false;
-        if (!spawned) {
-            debug_log("Spawning player & monsters...\n");
 
+        if (!spawned) {
             DC->player->reset_position(32 * 20, 32 * 10);
 
+            // 生成小怪
             DC->monsters.clear();
             for (int i = 0; i < 10; i++) {
                 DC->monsters.push_back(
                     new Monster(
-                        32 * 20 + i * 30,   // 世界座標靠近玩家
+                        32 * 20 + i * 30,
                         32 * 10 + i * 20,
                         "./assets/image/slime.png"
                     )
@@ -256,12 +328,8 @@ bool Game::game_update() {
 
             spawned = true;
         }
-        // ─────────────────────────────────────────────
 
-
-        // ─────────────────────────────────────────────
         // BGM
-        // ─────────────────────────────────────────────
         static bool bgm_started = false;
         if (!bgm_started) {
             bgm = SC->play(background_sound_path, ALLEGRO_PLAYMODE_LOOP);
@@ -274,43 +342,59 @@ bool Game::game_update() {
             state = STATE::PAUSE;
         }
 
-
-        // ─────────────────────────────────────────────
-        // 更新 camera = player tile
-        // ─────────────────────────────────────────────
+        // 更新 camera
         int tx = DC->player->shape->center_x() / TILE_SIZE;
         int ty = DC->player->shape->center_y() / TILE_SIZE;
         DC->level->update(tx, ty);
 
-
-        // ─────────────────────────────────────────────
         // 更新玩家 & 怪物
-        // ─────────────────────────────────────────────
         DC->player->update();
         OC->update();
 
-        DataCenter* DC = DataCenter::get_instance();
-
-        // ★ 達成目標（只觸發一次）
+        // -------- 玩家擊殺達成 → 進入 WIN_HINT 視窗 --------
         if (!DC->stage_cleared &&
             DC->slime_kill_count >= DC->slime_kill_target)
         {
             DC->stage_cleared = true;
-            state = STATE::WIN_HINT;   // 自訂新狀態
+            state = STATE::WIN_HINT;
         }
 
-        // ─────────────────────────────────────────────
-        // 死亡判定
-        // ─────────────────────────────────────────────
+        // -------- NPC互動（根據任務階段）---------
+        if (DC->forest_npc && DC->forest_npc->is_adjacent_to_player() && interact) {
+
+            if (DC->slime_kill_count < DC->slime_kill_target) {
+        
+            show_dialog("There seem to be a lot more little slimes in the village lately...\nBut I'm missing the key evidence.");
+            state = STATE::DIALOG;
+            }
+            else if (DC->fragment_collected < DC->fragment_total) {
+
+                show_dialog("This is the clue I've been looking for!\nCould you help me collect five magic gems?");
+                if (DC->fragments.empty()) spawn_fragments();
+                state = STATE::DIALOG;
+            }
+            else {
+
+                show_dialog("Great! With this, I can craft a weapon to seal the Great Demon King.\nHead north!");
+                state = STATE::DIALOG;
+            }
+        }
+
+
+        // -------- 玩家拾取碎片 --------
+        for (auto* f : DC->fragments) {
+            if (!f->taken && f->is_adjacent_to_player() && interact) {
+                f->taken = true;
+                DC->fragment_collected++;
+            }
+        }
+
+        // 死亡
         if (DC->player->HP <= 0)
             state = STATE::LOSE;
 
         break;
-
-    
     }
-
-
 
     // ─────────── PAUSE ───────────
     case STATE::PAUSE: {
@@ -321,46 +405,38 @@ bool Game::game_update() {
         break;
     }
 
-
-    // ─────────── LOSE ───────────
-    case STATE::LOSE: {
-        float mx = DC->mouse.x;
-        float my = DC->mouse.y;
-
-        if(DC->mouse_state[1]) {
-            if(inside_button(mx, my, 385))
-                state = STATE::START;
-            if(inside_button(mx, my, 470))
-                return false;
-        }
-        break;
-    }
-
-
-    // ─────────── WIN ───────────
-    case STATE::WIN: {
-        float mx = DC->mouse.x;
-        float my = DC->mouse.y;
-
-        if(DC->mouse_state[1]) {
-            if(inside_button(mx, my, 370))
-                state = STATE::START;
-            if(inside_button(mx, my, 450))
-                return false;
-        }
-        break;
-    }
+    // ─────────── WIN_HINT（殺滿小怪後）───────────
     case STATE::WIN_HINT: {
+
         if (DC->key_state[ALLEGRO_KEY_ENTER] &&
             !DC->prev_key_state[ALLEGRO_KEY_ENTER])
         {
-            state = STATE::LEVEL;    // 或你想跳下一章節
+            // 清空全部史萊姆
+            for (Monster* m : DC->monsters) delete m;
+            DC->monsters.clear();
+
+            state = STATE::LEVEL;
         }
         break;
     }
-    
-}
+    case STATE::DIALOG:{
 
+        if (DC->key_state[ALLEGRO_KEY_ENTER] &&
+            !DC->prev_key_state[ALLEGRO_KEY_ENTER])
+        {
+            dialog_text = "";     // 清空
+            state = STATE::LEVEL; 
+        }
+        break;
+    }
+
+
+    // ─────────── LOSE ───────────
+    case STATE::LOSE:
+        // 原本你的程式碼
+        break;
+
+    } // ← switch 結束
 
     // update prev key/mouse
     memcpy(DC->prev_key_state, DC->key_state, sizeof(DC->key_state));
@@ -368,6 +444,7 @@ bool Game::game_update() {
 
     return true;
 }
+
 
 // ───────────────────────────────────────────────
 // Draw
@@ -378,6 +455,7 @@ void Game::game_draw() {
     FontCenter *FC = FontCenter::get_instance();
 
     al_clear_to_color(al_map_rgb(80, 80, 80));
+
 
     switch(state) {
 
@@ -390,7 +468,15 @@ void Game::game_draw() {
 
     case STATE::LEVEL: {
         DC->level->draw();
+        
         DC->player->draw();
+
+        if (DC->forest_npc)
+            DC->forest_npc->draw();
+
+        for (auto* f : DC->fragments)
+            f->draw();
+
         ui->draw();
         OC->draw();
         break;
@@ -476,9 +562,34 @@ void Game::game_draw() {
             "(press ENTER to continue)");
         break;
     }
-}
+    case STATE::DIALOG: {
+        // 先畫遊戲畫面（地圖、玩家、NPC…）
+        DC->level->draw();
+        DC->player->draw();
+        if (DC->forest_npc) DC->forest_npc->draw();
+        // 你也可以畫 monsters、fragments…
 
+        // —— 對話框 —— (Zelda 黑底白框)
+        al_draw_filled_rectangle(50, 350, 910, 520, al_map_rgba(0,0,0,200));
+        al_draw_rectangle(50, 350, 910, 520, al_map_rgb(255,255,255), 4);
 
+        FontCenter* FC = FontCenter::get_instance();
+        al_draw_multiline_text(
+            FC->caviar_dreams[FontSize::MEDIUM],
+            al_map_rgb(255,255,255),
+            80, 380,
+            800, 30,
+            0,
+            dialog_text.c_str()
+        );
+
+        break;
+    }
+
+    }
+    // 對話框繪製 (全狀態都適用)
+    if (DC->dialog)
+        DC->dialog->draw();
     al_flip_display();
 }
 

@@ -1,4 +1,5 @@
 #include "DataCenter.h"
+#include "DialogManager.h"
 #include <cstring>
 #include "../Level.h"
 #include "../Player.h"
@@ -13,17 +14,36 @@ namespace DataSetting {
 }
 
 DataCenter::DataCenter() {
+
+	debug_log("DataCenter created\n");
 	this->FPS = DataSetting::FPS;
 	this->window_width = DataSetting::window_width;
 	this->window_height = DataSetting::window_height;
 	this->game_field_length = DataSetting::game_field_length;
+
 	memset(key_state, false, sizeof(key_state));
 	memset(prev_key_state, false, sizeof(prev_key_state));
-	mouse = Point(0, 0);
 	memset(mouse_state, false, sizeof(mouse_state));
 	memset(prev_mouse_state, false, sizeof(prev_mouse_state));
+
+	mouse = Point(0, 0);
+
 	player = new Player();
 	level = new Level();
+
+	forest_npc = nullptr;
+    fragments.clear();
+
+    slime_kill_count = 0;
+    slime_kill_target = 5;
+    fragment_collected = 0;
+    fragment_total = 5;
+
+    stage_cleared = false;
+
+	dialog = new DialogManager();
+	debug_log("DialogManager allocated at %p\n", dialog);
+
 }
 
 DataCenter::~DataCenter() {
