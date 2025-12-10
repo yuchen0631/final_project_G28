@@ -148,6 +148,18 @@ Game::game_init() {
 	state = STATE::START;
 	al_start_timer(timer);
 
+	DC->monsters.push_back(
+        new Monster(300, 300, "./assets/image/slime.png")
+    );
+    for(int i=0; i<10; i++){
+        double x = 100 + rand() % 400;
+        double y = 100 + rand() % 400;
+
+        DC->monsters.push_back(
+            new Monster(x, y, "./assets/image/slime.png")
+        );
+    }
+
 	win = IC->get(win_img_path);
 	lose = IC->get(lose_img_path);
 }
@@ -213,7 +225,7 @@ Game::game_update() {
 				debug_log("<Game> state: change to PAUSE\n");
 				state = STATE::PAUSE;
 			}
-			if(DC->level->remain_monsters() == 0 && DC->monsters.size() == 0) {
+			if(DC->monsters.size() == 0) {
 				debug_log("<Game> state: change to END\n");
 				state = STATE::WIN;
 			}
@@ -263,11 +275,11 @@ Game::game_update() {
 	}
 	// If the game is not paused, we should progress update.
 	if(state != STATE::PAUSE) {
-		DC->player->update();
 		SC->update();
 		ui->update();
 		if(state == STATE::LEVEL) {
 			DC->level->update();
+			DC->player->update();
 			OC->update();
 		}
 	}
@@ -321,6 +333,7 @@ Game::game_draw() {
 		// user interface
 		if(state == STATE::LEVEL) {
 			DC->level->draw();
+			DC->player->draw();
 			ui->draw();
 			OC->draw();
 		}

@@ -1,174 +1,146 @@
 #include "Monster.h"
-#include "MonsterWolf.h"
-#include "MonsterCaveMan.h"
-#include "MonsterWolfKnight.h"
-#include "MonsterDemonNinja.h"
 #include "../data/DataCenter.h"
 #include "../data/ImageCenter.h"
-#include "../Level.h"
-#include "../shapes/Point.h"
-#include "../shapes/Rectangle.h"
-#include "../Utils.h"
+#include "../Player.h"
+#include <cmath>
+#include <cstdlib>
 #include <allegro5/allegro_primitives.h>
 
-using namespace std;
+Monster::Monster(double x, double y, const char* img_root) {
+    sprintf(img_path, "%s", img_root);
+    shape = new Rectangle(x, y, x + 20, y + 20);
 
-// fixed settings
-enum class Dir {
-	UP, DOWN, LEFT, RIGHT
-};
-namespace MonsterSetting {
-	static constexpr char monster_imgs_root_path[static_cast<int>(MonsterType::MONSTERTYPE_MAX)][40] = {
-		"./assets/image/monster/Wolf",
-		"./assets/image/monster/CaveMan",
-		"./assets/image/monster/WolfKnight",
-		"./assets/image/monster/DemonNinja"
-	};
-	static constexpr char dir_path_prefix[][10] = {
-		"UP", "DOWN", "LEFT", "RIGHT"
-	};
+	// random initial direction
+    dir_x = (rand() % 3) - 1; // -1,0,1
+    dir_y = (rand() % 3) - 1;
+    if (dir_x == 0 && dir_y == 0) dir_x = 1;
+    last_change_dir = al_get_time();
 }
 
-/**
- * @brief Create a Monster* instance by the type.
- * @param type the type of a monster.
- * @param path walk path of the monster. The path should be represented in road grid format.
- * @return The curresponding Monster* instance.
- * @see Level::grid_to_region(const Point &grid) const
- */
-Monster *Monster::create_monster(MonsterType type, const vector<Point> &path) {
-	switch(type) {
-		case MonsterType::WOLF: {
-			return new MonsterWolf{path};
-		}
-		case MonsterType::CAVEMAN: {
-			return new MonsterCaveMan{path};
-		}
-		case MonsterType::WOLFKNIGHT: {
-			return new MonsterWolfKnight{path};
-		}
-		case MonsterType::DEMONNIJIA: {
-			return new MonsterDemonNinja{path};
-		}
-		case MonsterType::MONSTERTYPE_MAX: {}
-	}
-	GAME_ASSERT(false, "monster type error.");
+Monster* Monster::create_monster(MonsterType type) {
+    // random spawn position
+    double x = rand() % 960;
+    double y = rand() % 540;
+
+    const char* img = nullptr;
+    switch(type) {
+        case MonsterType::SLIME:
+            img = "./assets/image/slime.png";
+            break;
+        //handle other monster types here
+    }
+
+    return new Monster(x, y, img);
 }
 
-/**
- * @brief Given velocity of x and y direction, determine which direction the monster should face.
- */
-Dir convert_dir(const Point &v) {
-	if(v.y < 0 && abs(v.y) >= abs(v.x))
-		return Dir::UP;
-	if(v.y > 0 && abs(v.y) >= abs(v.x))
-		return Dir::DOWN;
-	if(v.x < 0 && abs(v.x) >= abs(v.y))
-		return Dir::LEFT;
-	if(v.x > 0 && abs(v.x) >= abs(v.y))
-		return Dir::RIGHT;
-	return Dir::RIGHT;
+void Monster::update() {
+	DataCenter* DC = DataCenter::get_instance();
+    Player* player = DC->player;
+    random_move();
+    try_attack_player();
+
+    // update shape size based on image size
+    ImageCenter* IC = ImageCenter::get_instance();
+    ALLEGRO_BITMAP* bmp = IC->get(img_path);
+	if (!bmp) return;
+
+    int w = al_get_bitmap_width(bmp);
+    int h = al_get_bitmap_height(bmp);
+
+    double cx = shape->center_x();
+    double cy = shape->center_y();
+
+    shape->x1 = cx - w * 0.4;
+    shape->y1 = cy - h * 0.4;
+    shape->x2 = cx + w * 0.4;
+    shape->y2 = cy + h * 0.4;
 }
 
-Monster::Monster(const vector<Point> &path, MonsterType type) {
-	DataCenter *DC = DataCenter::get_instance();
+void Monster::random_move() {
+    DataCenter* DC = DataCenter::get_instance();
+    double now = al_get_time();
 
-	shape.reset(new Rectangle{0, 0, 0, 0});
-	this->type = type;
-	dir = Dir::RIGHT;
-	bitmap_img_id = 0;
-	bitmap_switch_counter = 0;
-	for(const Point &p : path)
-		this->path.push(p);
-	if(!path.empty()) {
-		const Point &grid = this->path.front();
-		const Rectangle &region = DC->level->grid_to_region(grid);
-		// Temporarily set the bounding box to the center (no area) since we haven't got the hit box of the monster.
-		shape.reset(new Rectangle{region.center_x(), region.center_y(), region.center_x(), region.center_y()});
-		this->path.pop();
-	}
+    if (now - last_change_dir >= change_dir_interval) {
+        last_change_dir = now;
+
+        dir_x = (rand() % 3) - 1; // -1,0,1
+        dir_y = (rand() % 3) - 1;
+
+        if (dir_x == 0 && dir_y == 0)
+            dir_x = 1;
+    }
+
+    double len = std::sqrt(dir_x*dir_x + dir_y*dir_y);
+    double vx = (dir_x / len) * speed / DC->FPS;
+    double vy = (dir_y / len) * speed / DC->FPS;
+
+    shape->update_center_x(shape->center_x() + vx);
+    shape->update_center_y(shape->center_y() + vy);
+
+	int screen_w = DC->window_width;  
+    int screen_h = DC->window_height;
+
+    // implement screen boundary check
+    if (shape->x1 < 0) {
+        shape->update_center_x(shape->center_x() - shape->x1); // push slime back into screen
+        dir_x = -dir_x; // invert X direction (bounce back)
+    }
+
+    else if (shape->x2 > screen_w) {
+        shape->update_center_x(shape->center_x() - (shape->x2 - screen_w));
+        dir_x = -dir_x; 
+    }
+
+    if (shape->y1 < 0) {
+        shape->update_center_y(shape->center_y() - shape->y1); 
+        dir_y = -dir_y; 
+    }
+
+    else if (shape->y2 > screen_h) {
+        shape->update_center_y(shape->center_y() - (shape->y2 - screen_h)); 
+        dir_y = -dir_y; 
+    }
 }
 
-/**
- * @details This update function updates the following things in order:
- * @details * Move pose of the current facing direction (bitmap_img_id).
- * @details * Current position (center of the hit box). The position is moved based on the center of the hit box (Rectangle). If the center of this monster reaches the center of the first point of path, the function will proceed to the next point of path.
- * @details * Update the real bounding box by the center of the hit box calculated as above.
- */
-void
-Monster::update() {
-	DataCenter *DC = DataCenter::get_instance();
-	ImageCenter *IC = ImageCenter::get_instance();
+void Monster::try_attack_player() {
+    DataCenter* DC = DataCenter::get_instance();
+    Player* p = DC->player;
 
-	// After a period, the bitmap for this monster should switch from (i)-th image to (i+1)-th image to represent animation.
-	if(bitmap_switch_counter) --bitmap_switch_counter;
-	else {
-		bitmap_img_id = (bitmap_img_id + 1) % (bitmap_img_ids[static_cast<int>(dir)].size());
-		bitmap_switch_counter = bitmap_switch_freq;
-	}
-	// v (velocity) divided by FPS is the actual moving pixels per frame.
-	double movement = v / DC->FPS;
-	// Keep trying to move to next destination in "path" while "path" is not empty and we can still move.
-	while(!path.empty() && movement > 0) {
-		const Point &grid = this->path.front();
-		const Rectangle &region = DC->level->grid_to_region(grid);
-		const Point &next_goal = Point{region.center_x(), region.center_y()};
+    double mx = shape->center_x();
+    double my = shape->center_y();
+    double px = p->shape->center_x();
+    double py = p->shape->center_y();
 
-		// Extract the next destination as "next_goal". If we want to reach next_goal, we need to move "d" pixels.
-		double d = Point::dist(Point{shape->center_x(), shape->center_y()}, next_goal);
-		Dir tmpdir;
-		if(d < movement) {
-			// If we can move more than "d" pixels in this frame, we can directly move onto next_goal and reduce "movement" by "d".
-			movement -= d;
-			tmpdir = convert_dir(Point{next_goal.x - shape->center_x(), next_goal.y - shape->center_y()});
-			shape.reset(new Rectangle{
-				next_goal.x, next_goal.y,
-				next_goal.x, next_goal.y
-		});
-			path.pop();
-		} else {
-			// Otherwise, we move exactly "movement" pixels.
-			double dx = (next_goal.x - shape->center_x()) / d * movement;
-			double dy = (next_goal.y - shape->center_y()) / d * movement;
-			tmpdir = convert_dir(Point{dx, dy});
-			shape->update_center_x(shape->center_x() + dx);
-			shape->update_center_y(shape->center_y() + dy);
-			movement = 0;
-		}
-		// Update facing direction.
-		dir = tmpdir;
-	}
-	// Update real hit box for monster.
-	char buffer[50];
-	sprintf(
-		buffer, "%s/%s_%d.png",
-		MonsterSetting::monster_imgs_root_path[static_cast<int>(type)],
-		MonsterSetting::dir_path_prefix[static_cast<int>(dir)],
-		bitmap_img_ids[static_cast<int>(dir)][bitmap_img_id]);
-	ALLEGRO_BITMAP *bitmap = IC->get(buffer);
-	const double &cx = shape->center_x();
-	const double &cy = shape->center_y();
-	// We set the hit box slightly smaller than the actual bounding box of the image because there are mostly empty spaces near the edge of a image.
-	const int &h = al_get_bitmap_width(bitmap) * 0.8;
-	const int &w = al_get_bitmap_height(bitmap) * 0.8;
-	shape.reset(new Rectangle{
-		(cx - w / 2.), (cy - h / 2.),
-		(cx - w / 2. + w), (cy - h / 2. + h)
-	});
+    double dist = std::sqrt((mx - px)*(mx - px) + (my - py)*(my - py));
+
+    if (dist <= attack_range)
+        attack_player();
 }
 
-void
-Monster::draw() {
-	ImageCenter *IC = ImageCenter::get_instance();
-	char buffer[50];
-	sprintf(
-		buffer, "%s/%s_%d.png",
-		MonsterSetting::monster_imgs_root_path[static_cast<int>(type)],
-		MonsterSetting::dir_path_prefix[static_cast<int>(dir)],
-		bitmap_img_ids[static_cast<int>(dir)][bitmap_img_id]);
-	ALLEGRO_BITMAP *bitmap = IC->get(buffer);
-	al_draw_bitmap(
-		bitmap,
-		shape->center_x() - al_get_bitmap_width(bitmap) / 2,
-		shape->center_y() - al_get_bitmap_height(bitmap) / 2, 0);
+void Monster::attack_player() {
+    double now = al_get_time();
+
+    if (now - last_attack_time < attack_cooldown)
+        return;
+
+    last_attack_time = now;
+
+    DataCenter* DC = DataCenter::get_instance();
+    Player* p = DC->player;
+
+    p->HP -= 1;
+
+    debug_log("<Monster> Hit Player! HP = %d\n", p->HP);
+}
+
+void Monster::draw() {
+    ImageCenter* IC = ImageCenter::get_instance();
+    ALLEGRO_BITMAP* bmp = IC->get(img_path);
+
+    al_draw_bitmap(
+        bmp,
+        shape->center_x() - al_get_bitmap_width(bmp) / 2,
+        shape->center_y() - al_get_bitmap_height(bmp) / 2,
+        0
+    );
 }

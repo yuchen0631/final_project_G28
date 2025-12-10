@@ -2,38 +2,38 @@
 #define OPERATIONCENTER_H_INCLUDED
 
 /**
- * @brief Class that defines functions for all object operations.
- * @details Object self-update, draw, and object-to-object interact functions are defined here.
+ * @brief Central controller for all game object updates & drawing.
+ * @details Handles player-monster interactions and monster updates.
  */
 class OperationCenter
 {
 public:
-	static OperationCenter *get_instance() {
-		static OperationCenter OC;
-		return &OC;
-	}
-	/**
-	 * @brief Highest level update function.
-	 * @details Calls all other update functions.
-	 */
-	void update();
-	/**
-	 * @brief Highest level draw function.
-	 * @details Calls all other draw functions.
-	 */
-	void draw();
+    static OperationCenter* get_instance() {
+        static OperationCenter OC;
+        return &OC;
+    }
+
+    /**
+     * @brief Global update entry.
+     * @details Updates all monsters and handles monster-player interactions.
+     */
+    void update();
+
+    /**
+     * @brief Global draw entry.
+     * @details Draws all monsters.
+     */
+    void draw();
+
 private:
-	OperationCenter() {}
-private:
-	void _update_monster();
-	void _update_tower();
-	void _update_towerBullet();
-	void _update_monster_towerBullet();
-	void _update_monster_player();
-private:
-	void _draw_monster();
-	void _draw_tower();
-	void _draw_towerBullet();
+    OperationCenter() {}
+
+    // monster update & interaction
+    void _update_monster();
+    void _update_monster_player();
+
+    // drawing
+    void _draw_monster();
 };
 
 #endif
