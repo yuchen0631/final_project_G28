@@ -16,9 +16,8 @@ class Level;
 class Monster;
 class Bullet;
 class NPC;
+class Boss;
 
-// ★ 刪掉 FragmentObject 的 forward declare！！！
-// class FragmentObject;  ← 必須刪掉
 
 class DataCenter
 {
@@ -60,6 +59,12 @@ public:
     std::vector<FragmentObject*> fragments;
 
     bool stage_cleared = false;
+public:
+    Boss* final_boss = nullptr;
+    bool boss_spawned = false;
+    double boss_spawn_timer = 0;
+    bool slimes_cleared_after_boss = false;
+
 
 private:
     DataCenter();

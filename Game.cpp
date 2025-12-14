@@ -10,6 +10,8 @@
 #include "NPC.h"
 #include "FragmentObject.h"
 #include "data/DialogManager.h"
+#include "monsters/Boss.h"
+
 
 
 
@@ -351,6 +353,34 @@ bool Game::game_update() {
         DC->player->update();
         OC->update();
 
+        // =======================================================
+        // ★ Step 1. 玩家走到指定 tile → 3 秒後生成 Boss
+        // =======================================================
+        int px_tile = DC->player->shape->center_x() / TILE_SIZE;
+        int py_tile = DC->player->shape->center_y() / TILE_SIZE;
+
+        // 假設 Boss 生成點是 (23, 5)
+        if (!DC->boss_spawned && px_tile == 20 && py_tile == 1)
+        {
+            DC->boss_spawn_timer += 1.0 / DC->FPS;
+
+            if (DC->boss_spawn_timer >= 3.0)
+            {
+                DC->final_boss = new Boss(
+                    "./assets/image/monster/DemonNinja/DOWN_0.png",
+                    25 * TILE_SIZE,
+                    5 * TILE_SIZE
+                );
+
+                DC->boss_spawned = true;
+                debug_log("=== BOSS SPAWNED ===\n");
+            }
+        }
+        else {
+            DC->boss_spawn_timer = 0;
+        }
+
+
         // -------- 玩家擊殺達成 → 進入 WIN_HINT 視窗 --------
         if (!DC->stage_cleared &&
             DC->slime_kill_count >= DC->slime_kill_target)
@@ -388,6 +418,33 @@ bool Game::game_update() {
                 DC->fragment_collected++;
             }
         }
+        // =======================================================
+        // ★ Step 2. Boss 更新（追蹤 + 攻擊）
+        // =======================================================
+        if (DC->boss_spawned && DC->final_boss)
+        {
+            // ---- A. 只在 Boss 剛剛出現時清除 slime ----
+            if (!DC->slimes_cleared_after_boss)
+            {
+                for (Monster* m : DC->monsters)
+                delete m;
+                DC->monsters.clear();
+
+                DC->slimes_cleared_after_boss = true;  // ★ 確保只執行一次
+                debug_log("=== SLIMES CLEARED (Boss Phase Begin) ===\n");
+            }
+
+            // ---- B. 更新 Boss 行為（真正攻擊玩家的程式在 Boss.cpp 裡）----
+            DC->final_boss->update();
+
+            // ---- C. 檢查 Boss 是否死亡 ----
+            if (DC->final_boss->is_dead)
+            {
+                debug_log("=== BOSS DEFEATED ===\n");
+                state = STATE::WIN;
+            }
+}
+
 
         // 死亡
         if (DC->player->HP <= 0)
@@ -455,6 +512,13 @@ void Game::game_draw() {
     FontCenter *FC = FontCenter::get_instance();
 
     al_clear_to_color(al_map_rgb(80, 80, 80));
+    int tx = 20;
+    int ty = 1;
+    int px = tx * TILE_SIZE - DC->level->get_cam_x();
+        int py = ty * TILE_SIZE - DC->level->get_cam_y();
+
+    al_draw_rectangle(px, py, px + TILE_SIZE, py + TILE_SIZE,
+                    al_map_rgb(255, 0, 0), 3);
 
 
     switch(state) {
@@ -476,6 +540,54 @@ void Game::game_draw() {
 
         for (auto* f : DC->fragments)
             f->draw();
+
+        // =======================================================
+        // ★ Step 3. 畫 Boss
+        // =======================================================
+        if (DC->boss_spawned && DC->final_boss)
+            DC->final_boss->draw();
+
+        // === DEBUG: draw tile (21,2) ===
+        {
+            DataCenter* DC = DataCenter::get_instance();
+            Level* LV = DC->level;
+
+            int tx = 20;
+            int ty = 1;
+
+            int world_x = tx * TILE_SIZE;
+            int world_y = ty * TILE_SIZE;
+
+            int cam_x = LV->get_cam_x();
+            int cam_y = LV->get_cam_y();
+
+            int sx = world_x - cam_x;
+            int sy = world_y - cam_y;
+
+            // debug print
+            debug_log("[MARK] world(%d,%d) screen(%d,%d) cam(%d,%d)\n",
+              world_x, world_y, sx, sy, cam_x, cam_y);
+
+            // 如果框完全不在畫面裡，就先畫個背景框確認（必定可見）
+            if (sx < 0 || sy < 0 || sx > DC->window_width || sy > DC->window_height)
+            {
+                al_draw_filled_rectangle(10, 10, 60, 60, al_map_rgba(255,0,0,120));
+                al_draw_textf(
+                FontCenter::get_instance()->caviar_dreams[FontSize::SMALL],
+                    al_map_rgb(255,255,255),
+                    15, 15, 0,
+                    "(20,1) off screen"
+                );
+            }
+            else
+            {
+                al_draw_rectangle(
+                    sx, sy, sx + TILE_SIZE, sy + TILE_SIZE,
+                    al_map_rgb(255, 0, 0),
+                    4
+                );
+            }
+        }
 
         ui->draw();
         OC->draw();

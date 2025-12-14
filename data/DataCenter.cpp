@@ -38,6 +38,8 @@ DataCenter::DataCenter() {
     slime_kill_target = 5;
     fragment_collected = 0;
     fragment_total = 5;
+	slimes_cleared_after_boss = false;
+
 
     stage_cleared = false;
 
