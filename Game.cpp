@@ -77,11 +77,11 @@ void Game::spawn_fragments()
 
     struct GemPos { int x, y; };
     GemPos gempos[5] = {
-        {11, 20},
-        {13, 20},
-        {15, 20},
-        {17, 20},
-        {19, 20}
+        {4, 15},
+        {15, 8},
+        {23, 15},
+        {17, 15},
+        {20, 15}
     };
 
     for (int i = 0; i < 5; i++) {

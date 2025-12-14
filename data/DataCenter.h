@@ -8,7 +8,7 @@
 #include "../shapes/Point.h"
 
 #include "DialogManager.h"
-#include "../FragmentObject.h"   // ★★★ 這是最重要的 ★★★
+#include "../FragmentObject.h"
 
 // forward declarations（可以保留 Player / Level / Monster）
 class Player;

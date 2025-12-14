@@ -15,12 +15,21 @@ public:
 
 public:
     ALLEGRO_BITMAP* bmp = nullptr;
-    Rectangle* rectShape = nullptr;
-    int tx, ty;           // tile 座標
+
+    // ★ 真正的世界座標（永遠不要再用 rectShape 來當世界座標）
+    int wx, wy;
+
+    // tile 座標（用於判斷相鄰）
+    int tx, ty;
+
     bool taken = false;
 
-    int draw_size = 48;   // ★ gem 顯示大小（可調成 48 或 64）
+    int draw_size = 24; // gem 顯示大小
+
+    // only for collision
+    Rectangle* rectShape = nullptr;
 };
 
 #endif
+
 

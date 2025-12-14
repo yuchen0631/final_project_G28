@@ -41,6 +41,8 @@ DataCenter::DataCenter() {
 
     stage_cleared = false;
 
+	debug_log("DataCenter created\n");
+
 	dialog = new DialogManager();
 	debug_log("DialogManager allocated at %p\n", dialog);
 

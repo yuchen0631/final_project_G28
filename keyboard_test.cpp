@@ -1,4 +1,4 @@
-#define ALLEGRO_MAIN  // ★必要：讓 Allegro 接管 main()
+#define ALLEGRO_MAIN
 #include <allegro5/allegro.h>
 #include <iostream>
 
