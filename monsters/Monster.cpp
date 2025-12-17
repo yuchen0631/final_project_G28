@@ -17,8 +17,8 @@ Monster::Monster(double cx, double cy, const char* img_root) {
 }
 
 Monster* Monster::create_monster(MonsterType type) {
-    double x = rand() % 300;
-    double y = rand() % 300;
+    double x = rand() % 960;
+    double y = rand() % 540;
 
     const char* img = nullptr;
     switch(type) {
