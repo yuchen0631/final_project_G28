@@ -13,6 +13,8 @@ public:
     void game_init();
     bool game_update();
     void game_draw();
+    void spawn_fragments();
+
 
 private:
     enum class STATE {
@@ -21,7 +23,8 @@ private:
         PAUSE,
         LOSE,
         WIN,
-        WIN_HINT
+        WIN_HINT,
+        DIALOG
     };
 
     STATE state;

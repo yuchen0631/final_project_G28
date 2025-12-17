@@ -24,5 +24,9 @@ public:
 
     double attack_cooldown;  // attack cooldown timer
     double attack_interval;  // attack interval in seconds
+    
+    double invincible_timer = 0;     // 玩家被擊中後的無敵時間
+    double invincible_duration = 1.0;  // 1 秒無敵
+
 };
 #endif

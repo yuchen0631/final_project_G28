@@ -1,6 +1,7 @@
 #include "Level.h"
 #include "Utils.h"
 #include <allegro5/allegro_image.h>
+#include "data/DataCenter.h"
 #include <fstream>
 #include <iostream>
 
@@ -182,18 +183,26 @@ void Level::update(int px_tile, int py_tile) {
     update_camera(px_tile, py_tile);
 }
 
-void Level::update_camera(int tx, int ty) {
-    double zoom = camera_zoom; 
+void Level::update_camera(int tx, int ty)
+{
+    DataCenter* DC = DataCenter::get_instance();
 
-    cam_x = tx * TILE_SIZE - (960 / (2 * zoom));
-    cam_y = ty * TILE_SIZE - (540 / (2 * zoom));
+    double zoom = camera_zoom;
+    double view_w = DC->window_width / zoom;
+    double view_h = DC->window_height / zoom;
 
+    // 把玩家放在視野中心
+    cam_x = tx * TILE_SIZE - view_w / 2;
+    cam_y = ty * TILE_SIZE - view_h / 2;
+
+    // ---- Clamp Camera (避免鏡頭超出地圖) ----
     if (cam_x < 0) cam_x = 0;
     if (cam_y < 0) cam_y = 0;
 
-    if (cam_x > pixel_w - 960 / zoom) cam_x = pixel_w - 960 / zoom;
-    if (cam_y > pixel_h - 540 / zoom) cam_y = pixel_h - 540 / zoom;
+    if (cam_x > pixel_w - view_w) cam_x = pixel_w - view_w;
+    if (cam_y > pixel_h - view_h) cam_y = pixel_h - view_h;
 }
+
 
 //
 // ---- Drawing ----
