@@ -71,7 +71,7 @@ void Boss::update()
                 debug_log("[BOSS] Player is invincible, no damage.\n");
             }
 
-            atk_cooldown = atk_interval; // 例如 1 秒
+            atk_cooldown = atk_interval; 
         }
         else
         {
