@@ -733,7 +733,6 @@ void Game::game_draw() {
     al_flip_display();
 }
 
-// 在 Game.cpp 找個地方放，或者放在 game_init 附近
 void Game::reset_game() {
     DataCenter *DC = DataCenter::get_instance();
 
