@@ -191,6 +191,8 @@ void Game::game_init() {
     SC->init();
     FC->init();
 
+    if (!DC->level)
+        DC->level = new Level();
     // ---------------------------------------------------
     // ★★★ 現在才可以載圖片和 UI（避免使用未載入字體）
     // ---------------------------------------------------
@@ -215,6 +217,7 @@ void Game::game_init() {
 
     state = STATE::START;
     al_start_timer(timer);
+    DC->player = new Player();
 }
 
 
@@ -271,235 +274,260 @@ bool Game::game_update() {
     switch(state) {
 
     // ─────────── START MENU ───────────
-    case STATE::START: {
-        static bool played = false;
-        if(!played) {
-            SC->play(game_start_sound_path, ALLEGRO_PLAYMODE_ONCE);
-            played = true;
+        case STATE::START: {
+            static bool played = false;
+            if(!played) {
+                SC->play(game_start_sound_path, ALLEGRO_PLAYMODE_ONCE);
+                played = true;
+            }
+
+            float mx = DC->mouse.x;
+            float my = DC->mouse.y;
+
+            if(DC->mouse_state[1]) {
+                if(inside_button(mx, my, 270)) {
+                    if(!map_loaded) {
+                        DC->level->load_map("./assets/map/forest.tmj");
+                        map_loaded = true;
+
+                        // ★★★ NPC 一開始就生成 ★★★
+                        DC->forest_npc = new NPC(
+                            15 * TILE_SIZE,
+                            15 * TILE_SIZE,
+                            "./assets/image/npc.png"
+                        );
+                    }
+
+                    reset_game();
+                    
+                    // 清除按鍵
+                    al_flush_event_queue(event_queue);
+                    memset(DC->key_state, 0, sizeof(DC->key_state));
+                    memset(DC->prev_key_state, 0, sizeof(DC->prev_key_state));
+
+                    state = STATE::LEVEL;
+                }
+                if(inside_button(mx, my, 450))
+                    return false;
+            }
+            break;
         }
 
-        float mx = DC->mouse.x;
-        float my = DC->mouse.y;
+        // ─────────── LEVEL ───────────
+        case STATE::LEVEL: {
+            if (!DC->player)
+                DC->player = new Player();
+            static bool spawned = false;
 
-        if(DC->mouse_state[1]) {
-            if(inside_button(mx, my, 270)) {
-                if(!map_loaded) {
-                    DC->level->load_map("./assets/map/forest.tmj");
-                    map_loaded = true;
+            if (!spawned) {
+                DC->player->reset_position(32 * 20, 32 * 10);
 
-                    // ★★★ NPC 一開始就生成 ★★★
-                    DC->forest_npc = new NPC(
-                        15 * TILE_SIZE,
-                        15 * TILE_SIZE,
-                        "./assets/image/npc.png"
+                // 生成小怪
+                DC->monsters.clear();
+                for (int i = 0; i < 20; i++) {
+                    DC->monsters.push_back(
+                        new Monster(
+                            32 * 20 + i * 30,
+                            32 * 10 + i * 20,
+                            "./assets/image/slime.png"
+                        )
                     );
                 }
 
-                // 清除按鍵
-                al_flush_event_queue(event_queue);
-                memset(DC->key_state, 0, sizeof(DC->key_state));
-                memset(DC->prev_key_state, 0, sizeof(DC->prev_key_state));
+                spawned = true;
+            }
+
+            // BGM
+            static bool bgm_started = false;
+            if (!bgm_started) {
+                bgm = SC->play(background_sound_path, ALLEGRO_PLAYMODE_LOOP);
+                bgm_started = true;
+            }
+
+            // 暫停
+            if (DC->key_state[ALLEGRO_KEY_P] && !DC->prev_key_state[ALLEGRO_KEY_P]) {
+                SC->toggle_playing(bgm);
+                state = STATE::PAUSE;
+            }
+
+            // 更新 camera
+            int tx = DC->player->shape->center_x() / TILE_SIZE;
+            int ty = DC->player->shape->center_y() / TILE_SIZE;
+            DC->level->update(tx, ty);
+
+            // 更新玩家 & 怪物
+            OC->update();
+
+            // =======================================================
+            // ★ Step 1. 玩家走到指定 tile → 3 秒後生成 Boss
+            // =======================================================
+            int px_tile = DC->player->shape->center_x() / TILE_SIZE;
+            int py_tile = DC->player->shape->center_y() / TILE_SIZE;
+
+            // 假設 Boss 生成點是 (23, 5)
+            if (!DC->boss_spawned && px_tile == 20 && py_tile == 1)
+            {
+                DC->boss_spawn_timer += 1.0 / DC->FPS;
+
+                if (DC->boss_spawn_timer >= 3.0)
+                {
+                    DC->final_boss = new Boss(
+                        "./assets/image/monster/DemonNinja/DOWN_0.png",
+                        25 * TILE_SIZE,
+                        5 * TILE_SIZE
+                    );
+
+                    DC->boss_spawned = true;
+                    debug_log("=== BOSS SPAWNED ===\n");
+                }
+            }
+            else {
+                DC->boss_spawn_timer = 0;
+            }
+
+
+            // -------- 玩家擊殺達成 → 進入 WIN_HINT 視窗 --------
+            if (!DC->stage_cleared &&
+                DC->slime_kill_count >= DC->slime_kill_target)
+            {
+                DC->stage_cleared = true;
+                state = STATE::WIN_HINT;
+            }
+
+            // -------- NPC互動（根據任務階段）---------
+            if (DC->forest_npc && DC->forest_npc->is_adjacent_to_player() && interact) {
+
+                if (DC->slime_kill_count < DC->slime_kill_target) {
+            
+                show_dialog("There seem to be a lot more little slimes in the village lately...\nBut I'm missing the key evidence.");
+                state = STATE::DIALOG;
+                }
+                else if (DC->fragment_collected < DC->fragment_total) {
+
+                    show_dialog("This is the clue I've been looking for!\nCould you help me collect five magic gems?");
+                    if (DC->fragments.empty()) spawn_fragments();
+                    state = STATE::DIALOG;
+                }
+                else {
+
+                    show_dialog("Great! With this, I can craft a weapon to seal the Great Demon King.\nHead north!");
+                    state = STATE::DIALOG;
+                }
+            }
+
+
+            // -------- 玩家拾取碎片 --------
+            for (auto* f : DC->fragments) {
+                if (!f->taken && f->is_adjacent_to_player() && interact) {
+                    f->taken = true;
+                    DC->fragment_collected++;
+                }
+            }
+            // =======================================================
+            // ★ Step 2. Boss 更新（追蹤 + 攻擊）
+            // =======================================================
+            if (DC->boss_spawned && DC->final_boss)
+            {
+                // ---- A. 只在 Boss 剛剛出現時清除 slime ----
+                if (!DC->slimes_cleared_after_boss)
+                {
+                    for (Monster* m : DC->monsters)
+                    delete m;
+                    DC->monsters.clear();
+
+                    DC->slimes_cleared_after_boss = true;  // ★ 確保只執行一次
+                    debug_log("=== SLIMES CLEARED (Boss Phase Begin) ===\n");
+                }
+
+                // ---- B. 更新 Boss 行為（真正攻擊玩家的程式在 Boss.cpp 裡）----
+                DC->final_boss->update();
+
+                // ---- C. 檢查 Boss 是否死亡 ----
+                if (DC->final_boss->is_dead)
+                {
+                    debug_log("=== BOSS DEFEATED ===\n");
+                    state = STATE::WIN;
+                }
+    }
+
+
+            // 死亡
+            if (DC->player->HP <= 0)
+                state = STATE::LOSE;
+
+            break;
+        }
+
+        // ─────────── PAUSE ───────────
+        case STATE::PAUSE: {
+            if(DC->key_state[ALLEGRO_KEY_P] && !DC->prev_key_state[ALLEGRO_KEY_P]) {
+                SC->toggle_playing(bgm);
+                state = STATE::LEVEL;
+            }
+            break;
+        }
+
+        // ─────────── WIN_HINT（殺滿小怪後）───────────
+        case STATE::WIN_HINT: {
+
+            if (DC->key_state[ALLEGRO_KEY_ENTER] &&
+                !DC->prev_key_state[ALLEGRO_KEY_ENTER])
+            {
+                // 清空全部史萊姆
+                for (Monster* m : DC->monsters) delete m;
+                DC->monsters.clear();
 
                 state = STATE::LEVEL;
             }
-            if(inside_button(mx, my, 450))
-                return false;
+            break;
         }
-        break;
-    }
+        case STATE::DIALOG:{
 
-    // ─────────── LEVEL ───────────
-    case STATE::LEVEL: {
-
-        static bool spawned = false;
-
-        if (!spawned) {
-            DC->player->reset_position(32 * 20, 32 * 10);
-
-            // 生成小怪
-            DC->monsters.clear();
-            for (int i = 0; i < 10; i++) {
-                DC->monsters.push_back(
-                    new Monster(
-                        32 * 20 + i * 30,
-                        32 * 10 + i * 20,
-                        "./assets/image/slime.png"
-                    )
-                );
-            }
-
-            spawned = true;
-        }
-
-        // BGM
-        static bool bgm_started = false;
-        if (!bgm_started) {
-            bgm = SC->play(background_sound_path, ALLEGRO_PLAYMODE_LOOP);
-            bgm_started = true;
-        }
-
-        // 暫停
-        if (DC->key_state[ALLEGRO_KEY_P] && !DC->prev_key_state[ALLEGRO_KEY_P]) {
-            SC->toggle_playing(bgm);
-            state = STATE::PAUSE;
-        }
-
-        // 更新 camera
-        int tx = DC->player->shape->center_x() / TILE_SIZE;
-        int ty = DC->player->shape->center_y() / TILE_SIZE;
-        DC->level->update(tx, ty);
-
-        // 更新玩家 & 怪物
-        DC->player->update();
-        OC->update();
-
-        // =======================================================
-        // ★ Step 1. 玩家走到指定 tile → 3 秒後生成 Boss
-        // =======================================================
-        int px_tile = DC->player->shape->center_x() / TILE_SIZE;
-        int py_tile = DC->player->shape->center_y() / TILE_SIZE;
-
-        // 假設 Boss 生成點是 (23, 5)
-        if (!DC->boss_spawned && px_tile == 20 && py_tile == 1)
-        {
-            DC->boss_spawn_timer += 1.0 / DC->FPS;
-
-            if (DC->boss_spawn_timer >= 3.0)
+            if (DC->key_state[ALLEGRO_KEY_ENTER] &&
+                !DC->prev_key_state[ALLEGRO_KEY_ENTER])
             {
-                DC->final_boss = new Boss(
-                    "./assets/image/monster/DemonNinja/DOWN_0.png",
-                    25 * TILE_SIZE,
-                    5 * TILE_SIZE
-                );
-
-                DC->boss_spawned = true;
-                debug_log("=== BOSS SPAWNED ===\n");
+                dialog_text = "";     // 清空
+                state = STATE::LEVEL; 
             }
+            break;
         }
-        else {
-            DC->boss_spawn_timer = 0;
-        }
+        case STATE::WIN: {
+            float mx = DC->mouse.x;
+            float my = DC->mouse.y;
 
-
-        // -------- 玩家擊殺達成 → 進入 WIN_HINT 視窗 --------
-        if (!DC->stage_cleared &&
-            DC->slime_kill_count >= DC->slime_kill_target)
-        {
-            DC->stage_cleared = true;
-            state = STATE::WIN_HINT;
+            if (DC->mouse_state[1]) { // left click
+                if (inside_button(mx, my, 370)) {
+                    state = STATE::START;
+                }
+                if (inside_button(mx, my, 450)) {
+                    return false;
+                }
+            }
+            break;
         }
 
-        // -------- NPC互動（根據任務階段）---------
-        if (DC->forest_npc && DC->forest_npc->is_adjacent_to_player() && interact) {
+        // ─────────── LOSE ───────────
+        case STATE::LOSE: {
+            float mx = DC->mouse.x;
+            float my = DC->mouse.y;
 
-            if (DC->slime_kill_count < DC->slime_kill_target) {
-        
-            show_dialog("There seem to be a lot more little slimes in the village lately...\nBut I'm missing the key evidence.");
-            state = STATE::DIALOG;
+            if (DC->mouse_state[1]) { // left click
+                if (inside_button(mx, my, 385)) {
+                    state = STATE::START;
+                }
+                if (inside_button(mx, my, 470)) {
+                    return false;
+                }
             }
-            else if (DC->fragment_collected < DC->fragment_total) {
+            break;
+        } // ← switch 結束
 
-                show_dialog("This is the clue I've been looking for!\nCould you help me collect five magic gems?");
-                if (DC->fragments.empty()) spawn_fragments();
-                state = STATE::DIALOG;
-            }
-            else {
+        // update prev key/mouse
+        memcpy(DC->prev_key_state, DC->key_state, sizeof(DC->key_state));
+        memcpy(DC->prev_mouse_state, DC->mouse_state, sizeof(DC->mouse_state));
 
-                show_dialog("Great! With this, I can craft a weapon to seal the Great Demon King.\nHead north!");
-                state = STATE::DIALOG;
-            }
-        }
-
-
-        // -------- 玩家拾取碎片 --------
-        for (auto* f : DC->fragments) {
-            if (!f->taken && f->is_adjacent_to_player() && interact) {
-                f->taken = true;
-                DC->fragment_collected++;
-            }
-        }
-        // =======================================================
-        // ★ Step 2. Boss 更新（追蹤 + 攻擊）
-        // =======================================================
-        if (DC->boss_spawned && DC->final_boss)
-        {
-            // ---- A. 只在 Boss 剛剛出現時清除 slime ----
-            if (!DC->slimes_cleared_after_boss)
-            {
-                for (Monster* m : DC->monsters)
-                delete m;
-                DC->monsters.clear();
-
-                DC->slimes_cleared_after_boss = true;  // ★ 確保只執行一次
-                debug_log("=== SLIMES CLEARED (Boss Phase Begin) ===\n");
-            }
-
-            // ---- B. 更新 Boss 行為（真正攻擊玩家的程式在 Boss.cpp 裡）----
-            DC->final_boss->update();
-
-            // ---- C. 檢查 Boss 是否死亡 ----
-            if (DC->final_boss->is_dead)
-            {
-                debug_log("=== BOSS DEFEATED ===\n");
-                state = STATE::WIN;
-            }
-}
-
-
-        // 死亡
-        if (DC->player->HP <= 0)
-            state = STATE::LOSE;
-
-        break;
+        return true;
     }
-
-    // ─────────── PAUSE ───────────
-    case STATE::PAUSE: {
-        if(DC->key_state[ALLEGRO_KEY_P] && !DC->prev_key_state[ALLEGRO_KEY_P]) {
-            SC->toggle_playing(bgm);
-            state = STATE::LEVEL;
-        }
-        break;
-    }
-
-    // ─────────── WIN_HINT（殺滿小怪後）───────────
-    case STATE::WIN_HINT: {
-
-        if (DC->key_state[ALLEGRO_KEY_ENTER] &&
-            !DC->prev_key_state[ALLEGRO_KEY_ENTER])
-        {
-            // 清空全部史萊姆
-            for (Monster* m : DC->monsters) delete m;
-            DC->monsters.clear();
-
-            state = STATE::LEVEL;
-        }
-        break;
-    }
-    case STATE::DIALOG:{
-
-        if (DC->key_state[ALLEGRO_KEY_ENTER] &&
-            !DC->prev_key_state[ALLEGRO_KEY_ENTER])
-        {
-            dialog_text = "";     // 清空
-            state = STATE::LEVEL; 
-        }
-        break;
-    }
-
-
-    // ─────────── LOSE ───────────
-    case STATE::LOSE:
-        // 原本你的程式碼
-        break;
-
-    } // ← switch 結束
-
-    // update prev key/mouse
-    memcpy(DC->prev_key_state, DC->key_state, sizeof(DC->key_state));
-    memcpy(DC->prev_mouse_state, DC->mouse_state, sizeof(DC->mouse_state));
-
-    return true;
 }
 
 
@@ -512,6 +540,7 @@ void Game::game_draw() {
     FontCenter *FC = FontCenter::get_instance();
 
     al_clear_to_color(al_map_rgb(80, 80, 80));
+    
     int tx = 20;
     int ty = 1;
     int px = tx * TILE_SIZE - DC->level->get_cam_x();
@@ -520,183 +549,182 @@ void Game::game_draw() {
     al_draw_rectangle(px, py, px + TILE_SIZE, py + TILE_SIZE,
                     al_map_rgb(255, 0, 0), 3);
 
-
     switch(state) {
 
-    case STATE::START: {
-        al_draw_bitmap(background, 0, 0, 0);
-        draw_button("ENTER", DC->window_width/2, 270);
-        draw_button("EXIT", DC->window_width/2, 450);
-        break;
-    }
-
-    case STATE::LEVEL: {
-        DC->level->draw();
-        
-        DC->player->draw();
-
-        if (DC->forest_npc)
-            DC->forest_npc->draw();
-
-        for (auto* f : DC->fragments)
-            f->draw();
-
-        // =======================================================
-        // ★ Step 3. 畫 Boss
-        // =======================================================
-        if (DC->boss_spawned && DC->final_boss)
-            DC->final_boss->draw();
-
-        // === DEBUG: draw tile (21,2) ===
-        {
-            DataCenter* DC = DataCenter::get_instance();
-            Level* LV = DC->level;
-
-            int tx = 20;
-            int ty = 1;
-
-            int world_x = tx * TILE_SIZE;
-            int world_y = ty * TILE_SIZE;
-
-            int cam_x = LV->get_cam_x();
-            int cam_y = LV->get_cam_y();
-
-            int sx = world_x - cam_x;
-            int sy = world_y - cam_y;
-
-            // debug print
-            debug_log("[MARK] world(%d,%d) screen(%d,%d) cam(%d,%d)\n",
-              world_x, world_y, sx, sy, cam_x, cam_y);
-
-            // 如果框完全不在畫面裡，就先畫個背景框確認（必定可見）
-            if (sx < 0 || sy < 0 || sx > DC->window_width || sy > DC->window_height)
-            {
-                al_draw_filled_rectangle(10, 10, 60, 60, al_map_rgba(255,0,0,120));
-                al_draw_textf(
-                FontCenter::get_instance()->caviar_dreams[FontSize::SMALL],
-                    al_map_rgb(255,255,255),
-                    15, 15, 0,
-                    "(20,1) off screen"
-                );
-            }
-            else
-            {
-                al_draw_rectangle(
-                    sx, sy, sx + TILE_SIZE, sy + TILE_SIZE,
-                    al_map_rgb(255, 0, 0),
-                    4
-                );
-            }
+        case STATE::START: {
+            al_draw_bitmap(background, 0, 0, 0);
+            draw_button("ENTER", DC->window_width/2, 270);
+            draw_button("EXIT", DC->window_width/2, 450);
+            break;
         }
 
-        ui->draw();
-        OC->draw();
-        break;
-    }
+        case STATE::LEVEL: {
+            DC->level->draw();
+            
+            DC->player->draw();
 
-    case STATE::PAUSE: {
-        DC->level->draw();
-        DC->player->draw();
-        ui->draw();
-        al_draw_filled_rectangle(0,0,DC->window_width,DC->window_height,
-                                 al_map_rgba(0,0,0,120));
-        al_draw_text(
-            FC->caviar_dreams[FontSize::LARGE],
-            al_map_rgb(255,255,255),
-            DC->window_width/2, DC->window_height/2,
-            ALLEGRO_ALIGN_CENTRE, "PAUSE");
-        break;
-    }
+            if (DC->forest_npc)
+                DC->forest_npc->draw();
 
-    case STATE::LOSE: {
-        al_draw_bitmap(lose_img, 200, 20, 0);
-        draw_button("BACK TO MENU", DC->window_width/2, 385);
-        draw_button("EXIT", DC->window_width/2, 470);
-        break;
-    }
+            for (auto* f : DC->fragments)
+                f->draw();
 
-    case STATE::WIN: {
-        al_draw_bitmap(win_img, 260, 20, 0);
-        draw_button("BACK TO MENU", DC->window_width/2, 370);
-        draw_button("EXIT", DC->window_width/2, 450);
-        break;
-    }
+            // =======================================================
+            // ★ Step 3. 畫 Boss
+            // =======================================================
+            if (DC->boss_spawned && DC->final_boss)
+                DC->final_boss->draw();
+    /*
+            // === DEBUG: draw tile (21,2) ===
+            {
+                DataCenter* DC = DataCenter::get_instance();
+                Level* LV = DC->level;
 
-    case STATE::WIN_HINT: {
+                int tx = 20;
+                int ty = 1;
 
-        // 半透明黑背景
-        al_draw_filled_rectangle(
-            0, 0,
-            DC->window_width,
-            DC->window_height,
-            al_map_rgba(0, 0, 0, 180)
-        );
+                int world_x = tx * TILE_SIZE;
+                int world_y = ty * TILE_SIZE;
 
-        ALLEGRO_FONT* font = al_create_builtin_font();
+                int cam_x = LV->get_cam_x();
+                int cam_y = LV->get_cam_y();
 
-        // 白底彈窗
-        al_draw_filled_rectangle(
-            DC->window_width/2 - 200,
-            DC->window_height/2 - 100,
-            DC->window_width/2 + 200,
-            DC->window_height/2 + 100,
-            al_map_rgb(255,255,255)
-        );
+                int sx = world_x - cam_x;
+                int sy = world_y - cam_y;
 
-        al_draw_rectangle(
-            DC->window_width/2 - 200,
-            DC->window_height/2 - 100,
-            DC->window_width/2 + 200,
-            DC->window_height/2 + 100,
-            al_map_rgb(0,0,0),
-            2
-        );
+                // debug print
+                debug_log("[MARK] world(%d,%d) screen(%d,%d) cam(%d,%d)\n",
+                world_x, world_y, sx, sy, cam_x, cam_y);
 
-        al_draw_text(font,
-            al_map_rgb(0,0,0),
-            DC->window_width/2,
-            DC->window_height/2 - 40,
-            ALLEGRO_ALIGN_CENTRE,
-            "CONGRATULATIONS!");
+                // 如果框完全不在畫面裡，就先畫個背景框確認（必定可見）
+                if (sx < 0 || sy < 0 || sx > DC->window_width || sy > DC->window_height)
+                {
+                    al_draw_filled_rectangle(10, 10, 60, 60, al_map_rgba(255,0,0,120));
+                    al_draw_textf(
+                    FontCenter::get_instance()->caviar_dreams[FontSize::SMALL],
+                        al_map_rgb(255,255,255),
+                        15, 15, 0,
+                        "(20,1) off screen"
+                    );
+                }
+                else
+                {
+                    al_draw_rectangle(
+                        sx, sy, sx + TILE_SIZE, sy + TILE_SIZE,
+                        al_map_rgb(255, 0, 0),
+                        4
+                    );
+                }
+            }
+    */        
+            OC->draw();
+            ui->draw();
+            break;
+        }
 
-        al_draw_text(font,
-            al_map_rgb(0,0,0),
-            DC->window_width/2,
-            DC->window_height/2 + 10,
-            ALLEGRO_ALIGN_CENTRE,
-            "you got the hint");
+        case STATE::PAUSE: {
+            DC->level->draw();
+            DC->player->draw();
+            ui->draw();
+            al_draw_filled_rectangle(0,0,DC->window_width,DC->window_height,
+                                    al_map_rgba(0,0,0,120));
+            al_draw_text(
+                FC->caviar_dreams[FontSize::LARGE],
+                al_map_rgb(255,255,255),
+                DC->window_width/2, DC->window_height/2,
+                ALLEGRO_ALIGN_CENTRE, "PAUSE");
+            break;
+        }
 
-        al_draw_text(font,
-            al_map_rgb(0,0,0),
-            DC->window_width/2,
-            DC->window_height/2 + 50,
-            ALLEGRO_ALIGN_CENTRE,
-            "(press ENTER to continue)");
-        break;
-    }
-    case STATE::DIALOG: {
-        // 先畫遊戲畫面（地圖、玩家、NPC…）
-        DC->level->draw();
-        DC->player->draw();
-        if (DC->forest_npc) DC->forest_npc->draw();
-        // 你也可以畫 monsters、fragments…
+        case STATE::LOSE: {
+            al_draw_bitmap(lose_img, 200, 20, 0);
+            draw_button("BACK TO MENU", DC->window_width/2, 385);
+            draw_button("EXIT", DC->window_width/2, 470);
+            break;
+        }
 
-        // —— 對話框 —— (Zelda 黑底白框)
-        al_draw_filled_rectangle(50, 350, 910, 520, al_map_rgba(0,0,0,200));
-        al_draw_rectangle(50, 350, 910, 520, al_map_rgb(255,255,255), 4);
+        case STATE::WIN: {
+            al_draw_bitmap(win_img, 260, 20, 0);
+            draw_button("BACK TO MENU", DC->window_width/2, 370);
+            draw_button("EXIT", DC->window_width/2, 450);
+            break;
+        }
 
-        FontCenter* FC = FontCenter::get_instance();
-        al_draw_multiline_text(
-            FC->caviar_dreams[FontSize::MEDIUM],
-            al_map_rgb(255,255,255),
-            80, 380,
-            800, 30,
-            0,
-            dialog_text.c_str()
-        );
+        case STATE::WIN_HINT: {
 
-        break;
-    }
+            // 半透明黑背景
+            al_draw_filled_rectangle(
+                0, 0,
+                DC->window_width,
+                DC->window_height,
+                al_map_rgba(0, 0, 0, 180)
+            );
+
+            ALLEGRO_FONT* font = al_create_builtin_font();
+
+            // 白底彈窗
+            al_draw_filled_rectangle(
+                DC->window_width/2 - 200,
+                DC->window_height/2 - 100,
+                DC->window_width/2 + 200,
+                DC->window_height/2 + 100,
+                al_map_rgb(255,255,255)
+            );
+
+            al_draw_rectangle(
+                DC->window_width/2 - 200,
+                DC->window_height/2 - 100,
+                DC->window_width/2 + 200,
+                DC->window_height/2 + 100,
+                al_map_rgb(0,0,0),
+                2
+            );
+
+            al_draw_text(font,
+                al_map_rgb(0,0,0),
+                DC->window_width/2,
+                DC->window_height/2 - 40,
+                ALLEGRO_ALIGN_CENTRE,
+                "CONGRATULATIONS!");
+
+            al_draw_text(font,
+                al_map_rgb(0,0,0),
+                DC->window_width/2,
+                DC->window_height/2 + 10,
+                ALLEGRO_ALIGN_CENTRE,
+                "you got the hint");
+
+            al_draw_text(font,
+                al_map_rgb(0,0,0),
+                DC->window_width/2,
+                DC->window_height/2 + 50,
+                ALLEGRO_ALIGN_CENTRE,
+                "(press ENTER to continue)");
+            break;
+        }
+        case STATE::DIALOG: {
+            // 先畫遊戲畫面（地圖、玩家、NPC…）
+            DC->level->draw();
+            DC->player->draw();
+            if (DC->forest_npc) DC->forest_npc->draw();
+            // 你也可以畫 monsters、fragments…
+
+            // —— 對話框 —— (Zelda 黑底白框)
+            al_draw_filled_rectangle(50, 350, 910, 520, al_map_rgba(0,0,0,200));
+            al_draw_rectangle(50, 350, 910, 520, al_map_rgb(255,255,255), 4);
+
+            FontCenter* FC = FontCenter::get_instance();
+            al_draw_multiline_text(
+                FC->caviar_dreams[FontSize::MEDIUM],
+                al_map_rgb(255,255,255),
+                80, 380,
+                800, 30,
+                0,
+                dialog_text.c_str()
+            );
+
+            break;
+        }
 
     }
     // 對話框繪製 (全狀態都適用)
@@ -705,3 +733,35 @@ void Game::game_draw() {
     al_flip_display();
 }
 
+// 在 Game.cpp 找個地方放，或者放在 game_init 附近
+void Game::reset_game() {
+    DataCenter *DC = DataCenter::get_instance();
+
+    //clean up monsters
+    for (auto* m : DC->monsters) delete m;
+    DC->monsters.clear();
+
+    //clean up fragments
+    for (auto* f : DC->fragments) delete f;
+    DC->fragments.clear();
+
+    //reset boss
+    if (DC->final_boss) {
+        delete DC->final_boss;
+        DC->final_boss = nullptr;
+    }
+    DC->boss_spawned = false;
+    DC->slimes_cleared_after_boss = false;
+    DC->boss_spawn_timer = 0;
+    
+    //reset mission progress
+    DC->slime_kill_count = 0;
+    DC->fragment_collected = 0;
+    DC->stage_cleared = false;
+
+    //reset player
+    if (DC->player) {
+        DC->player->HP = 10; // 補血
+        DC->player->reset_position(32 * 20, 32 * 10);
+    }
+}

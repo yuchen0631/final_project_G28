@@ -14,6 +14,7 @@ public:
     bool game_update();
     void game_draw();
     void spawn_fragments();
+    void reset_game();
 
 
 private:

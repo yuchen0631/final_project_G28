@@ -4,6 +4,10 @@
 #include "../Player.h"
 
 void OperationCenter::update() {
+    DataCenter* DC = DataCenter::get_instance();
+
+    if (DC->player)
+        DC->player->update();
     _update_monster();
     _update_monster_player();
 }

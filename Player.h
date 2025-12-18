@@ -4,6 +4,22 @@
 #include "./shapes/Rectangle.h"
 #include "./shapes/Point.h"
 #include "./monsters/Monster.h"
+#include <allegro5/allegro.h>
+
+enum class PlayerDir {
+    DOWN,
+    UP,
+    LEFT,
+    RIGHT
+};
+
+enum class PlayerState {
+    IDLE,
+    MOVE,
+    ATTACK
+};
+
+class Monster;
 class Player {
 public:
     Player();
@@ -19,6 +35,22 @@ public:
 
     Rectangle* shape;
     int HP;
+
+    void update_animation();
+    void load_images();
+
+    // state
+    PlayerDir dir;
+    PlayerState state;
+
+    // animations
+    ALLEGRO_BITMAP* idle_img[4];
+    ALLEGRO_BITMAP* move_img[4][4];
+    ALLEGRO_BITMAP* attack_img[4][3];
+
+    int anim_frame;
+    double anim_timer;
+    double anim_interval;
 
     double v;   // movement speed (pixels per second)
 
