@@ -21,7 +21,7 @@ public:
     int HP = 20;
     bool is_dead = false;
 
-    double speed = 5;
+    double speed = 20;
 
     // ★ 攻擊冷卻
     double atk_cooldown = 0;
